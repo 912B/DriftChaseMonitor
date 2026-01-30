@@ -10,7 +10,7 @@ local CONFIG = {
   distMock = 20.0,    -- TIER 2: 嘲讽 (中距离)
   distProvoke = 40.0, -- TIER 1: 挑衅 (远距离 - Extended to 40m)
   
-  maxAngleDiff = 20, -- [New] 最大角度差 (超过此值不积分)
+  maxAngleDiff = 35, -- [New] 最大角度差 (超过此值不积分) - Relaxed from 20 to 35 for better feel
   starDuration = 1.0, -- [New] 单颗星星所需时间 (秒) -> User requested harder, let's keep 1.0 logic first but multiplier controls it? 
   -- No, let's set base duration. User said "Too simple", slowing it down is good.
   -- Let's set it to 2.0s per star in logic.
