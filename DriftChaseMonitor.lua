@@ -5,7 +5,7 @@
 local CONFIG = {
   minDriftAngle = 10, -- 最小漂移角度
   minSpeed = 20,      -- 最小速度
-  distPraise = 2.0,   -- TIER 3: 贴贴 (赞扬/阴阳)
+  distPraise = 3.5,   -- TIER 3: 贴贴 (赞扬/阴阳)
   distMock = 20.0,    -- TIER 2: 嘲讽 (中距离)
   distProvoke = 40.0, -- TIER 1: 挑衅 (远距离 - Extended to 40m)
   
@@ -324,12 +324,13 @@ function script.update(dt)
                 if i == sim.focusedCar then
                     -- 完美追走计时 (Perfect Chase Stats)
                     local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
+                    local realDt = ac.getDeltaT()
                     
                     if rawDist < CONFIG.distPraise then
                          stats.graceTimer = 0
-                         stats.activeTime = stats.activeTime + dt
+                         stats.activeTime = stats.activeTime + realDt
                     else
-                         stats.graceTimer = stats.graceTimer + dt
+                         stats.graceTimer = stats.graceTimer + realDt
                          if stats.graceTimer > 1.0 then stats.activeTime = 0 end
                     end
                     perfectChaseStats[pairKey] = stats
