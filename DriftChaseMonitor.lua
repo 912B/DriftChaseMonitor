@@ -243,6 +243,8 @@ function script.update(dt)
             local leader = ac.getCar(j)
             if leader and leader.isConnected then
                 local rawDist = math.distance(chaser.position, leader.position)
+                -- [Refactor] 统一使用补偿后的距离 (减去 2.0m 车宽)
+                local dist = math.max(0, rawDist - 2.0)
                 
                 -- 判断前后关系: Chaser 必须在 Leader 后方/侧后方
                 local dirToChaser = (chaser.position - leader.position):normalize()
@@ -260,11 +262,11 @@ function script.update(dt)
                 
                 -- 核心判定: Chaser 在飘 + Leader 在飘 + 距离近 + Chaser在后方
                 if isChaserDrifting and isLeaderDrifting and isBehind then
-                   if rawDist <= CONFIG.distPraise then
+                   if dist <= CONFIG.distPraise then
                       currentTier = 3 -- TIER 3: PRAISE
-                   elseif rawDist <= CONFIG.distMock then
+                   elseif dist <= CONFIG.distMock then
                       currentTier = 2 -- TIER 2: MOCK
-                   elseif rawDist <= CONFIG.distProvoke then
+                   elseif dist <= CONFIG.distProvoke then
                       currentTier = 1 -- TIER 1: PROVOKE
                    end
                 end
@@ -326,10 +328,7 @@ function script.update(dt)
                     local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
                     local realDt = ac.getDeltaT()
                     
-                    -- [Fix] Restore distance compensation like UI (Raw - 2.0m)
-                    local uiDist = math.max(0, rawDist - 2.0)
-                    
-                    if uiDist < CONFIG.distPraise then
+                    if dist < CONFIG.distPraise then
                          stats.graceTimer = 0
                          stats.activeTime = stats.activeTime + realDt
                     else
@@ -345,12 +344,12 @@ function script.update(dt)
                     local playerLookDot = player.look:dot( (leader.position - chaser.position):normalize() )
                     
                     if isChaserDrifting and isLeaderDrifting and playerLookDot > 0.5 and rawDist < 45.0 then
-                        -- 距离修正 (UI用) - Already calculated as uiDist above
-                        if uiDist < minFrontDist then
-                            minFrontDist = uiDist
+                        -- 距离修正 (UI用)
+                        if dist < minFrontDist then
+                            minFrontDist = dist
                             frameBestTarget = {
                                 index = j,
-                                dist = uiDist,
+                                dist = dist,
                                 stats = stats,
                                 isLocked = isLocked
                             }
