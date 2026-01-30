@@ -6,7 +6,7 @@ local CONFIG = {
   minDriftAngle = 10, -- 最小漂移角度
   minSpeed = 20,      -- 最小速度
   distPraise = 3.5,   -- TIER 3: 贴贴 (赞扬/阴阳)
-  distNormal = 5.0,   -- Normal Chase Range (Accumulates slowly)
+  distNormal = 10.0,   -- Normal Chase Range (Accumulates slowly)
   distMock = 20.0,    -- TIER 2: 嘲讽 (中距离)
   distProvoke = 40.0, -- TIER 1: 挑衅 (远距离 - Extended to 40m)
   
