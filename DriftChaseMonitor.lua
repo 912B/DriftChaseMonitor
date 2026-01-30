@@ -28,7 +28,6 @@ local CONFIG = {
 
 -- 状态变量
 local carPopups = {} -- 每辆车的飘字 {text, age, color, offset}
-local particles = {} -- 3D 粒子
 local lastMessageTime = {} -- [New] 记录上一次消息触发时间 {pairKey -> time}
 local perfectChaseStats = {} -- [New] 完美追走统计 {activeTime, graceTimer}
 local driftTimers = {} -- [New] 漂移断开计时器 (Grace Logic)
@@ -502,7 +501,7 @@ function script.drawUI(dt)
            local proj = render.projectPoint(headPos)
            
            -- 检查是否在屏幕内 (且在前方 z > 0)
-           if proj.z > 0 and proj.x > -0.2 and proj.x < 1.2 and proj.y > -0.2 and proj.y < 1.2 then
+           if proj.x > -0.2 and proj.x < 1.2 and proj.y > -0.2 and proj.y < 1.2 then
                 -- 淡入淡出
                 local alpha = 1.0
                 if popup.age < 0.5 then alpha = popup.age / 0.5 end
