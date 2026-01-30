@@ -677,8 +677,8 @@ function script.draw3D(dt)
                  local popScale = 1 + 2.7 * math.pow(t_pop - 1, 3) + 1.7 * math.pow(t_pop - 1, 2)
                  if t_pop>=1 then popScale = 1 end
                  
-                 -- Pos (Base 1.2m)
-                 local textBasePos = car.position + vec3(0, 1.2, 0)
+                 -- Pos (Result: starts at 2.0m, goes up to 4.2m)
+                 local textBasePos = car.position + vec3(0, 2.0, 0)
                  local currentDist = 2.0 * t_rise
                  local bubblePos = textBasePos + car.look * currentDist + vec3(0, currentHeight, 0)
                  
