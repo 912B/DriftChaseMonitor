@@ -138,48 +138,48 @@ local MSG_POOL = {
   -- (A) 后车视角 (Chaser -> Leader)
   -- TIER 3: 贴贴 (<3m) - 阴阳/赞扬
   FRONT_TIER3 = {
-    "NICE!", "TIE TIE!", "Kiss!", "贴贴!", "亲到了!",
-    "Pushing!", "别挡道!", "Too CLOSE!", "Love You!", "咬住了!",
-    "贴脸输出!", "推推推!", "你是NPC?", "贴身肉搏!"
+    "让让弟弟!", "这就是领跑?", "小心屁股！", "贴贴!", "亲一个!",
+    "甚至想推你!", "别挡道!", "太近了喂!", "真爱粉!", "胶水做的?",
+    "这种距离要怀孕了!", "甚至想帮你推车!", "您是NPC吗?", "这屁股我收下了!"
   },
   -- TIER 2: 嘲讽 (3-10m) - 施压
   FRONT_TIER2 = { 
-    "Too SLOW!", "散步?", "PUSH!", "Bye Bye", "认真的?",
-    "NOOB!", "闭眼都能追", "宽体过不去?", "BEEP BEEP!",
-    "奶奶都比你快", "热身?", "Reverse Entry?", "Gas Gas Gas!"
+    "开太慢了!", "在散步?", "给点力啊!", "算了，你自己跑吧", "这速度认真的?",
+    "杂鱼杂鱼", "我闭着眼都能追!", "路太宽了吗?", "甚至想按喇叭!",
+    "奶奶买菜都比你快!", "您在热身吗?", "倒车都能追!", "你知道油门在哪吗？"
   },
   -- TIER 1: 挑衅 (10-40m) - 远距离
   FRONT_TIER1 = { 
-    "Hurry Up!", "Hello?", "Understeer?", "Come on!", "Here I Come!", 
-    "Watch Out!", "Behind You!", "Coming!", "Wait for me!",
-    "Safety Car?", "Serious Mode!"
+    "快点啊!", "前面有人吗?", "要推头了?", "能不能行?", "我来了!", 
+    "小心屁股!", "就在你后面!", "追上来了!", "有种你等我!",
+    "前面是安全车吗?", "我要开始认真了!"
   },
   
   -- (B) 前车视角 (Leader -> Chaser)
   -- TIER 3: 贴贴 (<3m) - 惊恐/阴阳
   REAR_TIER3 = { 
-    "No Brake?", "Crazy!", "No Brakes?", "Too Close!", "Dont Crash!", 
-    "Zero Dist!", "My Paint!", "Fanboy!", "Glue?",
-    "Want a ride?", "Stop!", "Max Angle!", "Under Carriage?"
+    "别亲我屁股!", "杂鱼杂鱼!", "你没有刹车吗?", "太近了喂!", "想同归于尽?", 
+    "负距离!", "车漆要蹭掉了!", "真爱粉!", "胶水做的?",
+    "甚至想上我的车?", "在此地不要走动!", "这就是你的极限?", "想看我底盘?"
   },
   -- TIER 2: 嘲讽 (3-10m) - 嘲笑
   REAR_TIER2 = { 
-    "Catch Me!", "Passed!", "Want Pass?", "Closer!", "Noob!",
-    "Stable!", "Distance?", "Hooked?", "Award?",
-    "Nice Try!", "Interesting!"
+    "这就粘上了?", "通过考核!", "想超车吗?", "跟紧点弟弟!", "杂鱼杂鱼!",
+    "不仅快还稳!", "这种距离也没谁了!", "你是牛皮糖吗?", "甚至想给你颁奖!",
+    "还不赖嘛!", "稍微有点意思!"
   },
   -- TIER 1: 挑衅 (10-40m) - 勾引
   REAR_TIER1 = { 
-    "Chase Me!", "Smell Smoke!", "Just this?", "Closer!", "Too Slow!", 
-    "Scared?", "No Lights?", "Full Throttle!", "I'm Here!",
-    "Cant See Me!", "GPS Needed?", "Slow & Bad!"
+    "来追我呀!", "闻闻尾气!", "就这点本事?", "靠近点!", "太慢了!", 
+    "这就虚了?", "甚至看不到灯!", "油门踩进油箱里!", "我在前面!",
+    "看得到我尾灯算我输!", "需要导航吗?", "不仅慢还菜!"
   },
   
   -- LOST (通用)
   LOST = { 
-	"Lost?", "Where r u?", "License?", "Waiting...", "Go Home!",
-	"Cant Follow!", "Give up?", "No Taillights...", "Snail!",
-    "Disconnected?", "Taxi?", "Practice More!"
+	"迷路了?", "人呢?", "驾照买的?", "我在终点等你", "回家练练吧!",
+	"完全跟不住!", "这就放弃了?", "甚至看不到尾灯...", "慢得像乌龟!",
+    "甚至以为你掉线了!", "打个车过来吧!", "回家练练吧!"
   }
 }
 
