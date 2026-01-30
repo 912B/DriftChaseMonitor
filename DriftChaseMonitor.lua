@@ -21,6 +21,8 @@ local CONFIG = {
   
   messageCooldown = 15.0, -- [New] 消息冷却时间 (秒) - 防止刷屏
   
+  driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
+
   enableFaces = true -- [New] 是否启用表情包 (SDK Mode Safe)
 }
 
@@ -29,6 +31,7 @@ local carPopups = {} -- 每辆车的飘字 {text, age, color, offset}
 local particles = {} -- 3D 粒子
 local lastMessageTime = {} -- [New] 记录上一次消息触发时间 {pairKey -> time}
 local perfectChaseStats = {} -- [New] 完美追走统计 {activeTime, graceTimer}
+local driftTimers = {} -- [New] 漂移断开计时器 (Grace Logic)
 
 -- 辅助: 简单哈希函数
 local function stringHash(str)
@@ -232,6 +235,27 @@ function script.update(dt)
   local sim = ac.getSim()
   local player = ac.getCar(sim.focusedCar)
   
+  -- [New] 预计算所有车辆的漂移状态 (处理 Hysteresis)
+  local driftStates = {}
+  for i = 0, sim.carsCount - 1 do
+      local car = ac.getCar(i)
+      if car and car.isConnected then
+          local slip = getSlipAngle(car)
+          local isRawDrifting = slip > CONFIG.minDriftAngle and car.speedKmh > CONFIG.minSpeed
+          
+          if isRawDrifting then
+              driftTimers[i] = 0
+          else
+              driftTimers[i] = (driftTimers[i] or 0) + realDt
+          end
+          
+          -- 只要 grace timer 在允许范围内，就认为还在漂移 (即使 switch 中)
+          driftStates[i] = driftTimers[i] < CONFIG.driftGraceTime
+      else
+          driftStates[i] = false
+      end
+  end
+
   -- 重置本帧最佳目标
   local frameBestTarget = nil
   local minFrontDist = 99999
@@ -241,8 +265,8 @@ function script.update(dt)
     local chaser = ac.getCar(i)
     if chaser and chaser.isConnected then
        -- 检查 Chaser 状态
-       local chaserSlip = getSlipAngle(chaser)
-       local isChaserDrifting = chaserSlip > CONFIG.minDriftAngle and chaser.speedKmh > CONFIG.minSpeed
+       local chaserSlip = getSlipAngle(chaser) -- (Still needed for angleDiff)
+       local isChaserDrifting = driftStates[i]
        
        -- 遍历前车 (Leader)
        for j = 0, sim.carsCount - 1 do 
