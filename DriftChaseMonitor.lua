@@ -265,7 +265,8 @@ function script.update(dt)
                 local wasLocked = lastDistances[pairKey .. "_locked"] or false
                 local currentTier = 0
                 
-                local isLeaderDrifting = getSlipAngle(leader) > CONFIG.minDriftAngle
+                -- Use cached drift state
+                local isLeaderDrifting = driftStates[j]
                 
                     if isChaserDrifting and isLeaderDrifting and isBehind then
                        -- [New] 角度一致性检查
