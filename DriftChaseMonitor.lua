@@ -349,11 +349,16 @@ function script.update(dt)
                              if stats.graceTimer > 1.0 then stats.activeTime = 0 end
                         end
                     else
-                         -- Bad Angle: Treat as Lost Chase (Or Pause?)
-                         -- "Too simple" implies strictness. Let's make it Pause (no gain), or Decay?
-                         -- Let's make it "Grace Period" logic (Pause).
-                         stats.graceTimer = stats.graceTimer + realDt
-                         if stats.graceTimer > 1.0 then stats.activeTime = 0 end
+                         -- Bad Angle (角度不对)
+                         if dist < CONFIG.distNormal then
+                             -- [New] Range OK but Angle Bad -> PAUSE (Pause Scoring, Keep Combo)
+                             -- 既然距离还在范围内，就只暂停涨分，不立刻断连
+                             stats.graceTimer = 0
+                         else
+                             -- Range Bad -> DECAY (Lost Chase)
+                             stats.graceTimer = stats.graceTimer + realDt
+                             if stats.graceTimer > 1.0 then stats.activeTime = 0 end
+                         end
                     end
                     perfectChaseStats[pairKey] = stats
                     
