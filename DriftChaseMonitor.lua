@@ -489,37 +489,7 @@ function script.drawUI(dt)
   local sim = ac.getSim()
   local player = ac.getCar(sim.focusedCar)
   
-  -- [Fix] 绘制 3D 弹幕 (Danmaku)
-  ui.pushFont(ui.Font.Title)
-  for idx, popup in pairs(carPopups) do
-       local pCar = ac.getCar(idx)
-       if pCar then
-           -- 简单的向上飘动动画
-           popup.offset.y = popup.offset.y + dt * 0.5
-           
-           local headPos = pCar.position + vec3(0, 1.5 + popup.offset.y, 0)
-           local proj = render.projectPoint(headPos)
-           
-           -- 检查是否在屏幕内 (且在前方 z > 0)
-           if proj.x > -0.2 and proj.x < 1.2 and proj.y > -0.2 and proj.y < 1.2 then
-                -- 淡入淡出
-                local alpha = 1.0
-                if popup.age < 0.5 then alpha = popup.age / 0.5 end
-                local timeLeft = CONFIG.messageLife - popup.age
-                if timeLeft < 1.0 then alpha = timeLeft end
-                
-                local col = popup.color:clone()
-                col.mult = alpha
-                
-                local screenPos = vec2(proj.x * windowSize.x, proj.y * windowSize.y)
-                
-                -- 绘制描边文本 (为了看清)
-                ui.setCursor(screenPos - vec2(100, 15)) -- 简单居中修正
-                ui.textColored(popup.text, col)
-           end
-       end
-  end
-  ui.popFont()
+  -- [Reverted] 3D Text in UI (Caused Red Squares) -> Moved back to debugText logic which works for CJK
 
   -- 1. 表情包逻辑 (Face Logic) -- 独立逻辑，保留遍历
   if player then
@@ -714,7 +684,9 @@ function script.draw3D(dt)
                  
                  -- Render
                  local finalAlpha = alpha * distAlpha
-                 render.debugText(bubblePos, popup.text, rgbm(1,1,1, finalAlpha), 3.0 * popScale)
+                 local col = popup.color:clone()
+                 col.mult = finalAlpha
+                 render.debugText(bubblePos, popup.text, col, 3.0 * popScale)
             end
          end
        end
