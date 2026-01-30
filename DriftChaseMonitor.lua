@@ -458,7 +458,13 @@ function script.drawUI(dt)
               local activeTime = stats and stats.activeTime or 0
 
               -- Draw Bar
-              local barColor = isPerfect and rgbm(1, 0.84, 0, 1) or rgbm(0, 1, 0, 0.9)
+              local barColor = rgbm(0, 1, 0, 0.9) -- Default Green (> Normal)
+              
+              if dist < CONFIG.distPraise then
+                  barColor = rgbm(0.8, 0, 1, 1) -- Perfect: Purple
+              elseif dist < CONFIG.distNormal then
+                  barColor = rgbm(1, 0.84, 0, 1) -- Normal: Gold
+              end
               
               ui.drawRectFilled(barPos, barPos + vec2(barWidth, barHeight), rgbm(0, 0, 0, 0.5), 2)
               local fillW = barWidth * progress
