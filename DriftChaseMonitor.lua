@@ -340,7 +340,43 @@ function script.update(dt)
                 local isLocked = timer > CONFIG.warmupTime
 
                 -- 状态检测 & 触发特效 (仅逻辑，不涉及 UI)
-                -- ... (Skipping 3D Text logic)
+                -- A. 刚刚锁定！
+                -- (已注释)
+
+                -- B. 跟丢了！
+                if wasLocked and not isLocked then
+                     -- only trigger if we actually had a lock for a bit
+                     if timer < 0.1 then
+                         add3DMessage(j, getRandomMsg(MSG_POOL.LOST), 3)
+                     end
+                end
+
+                -- C. 升级反馈 & 对话
+                if isLocked then
+                    if currentTier > lastTier then
+                       -- Cooldown Check
+                       local now = os.clock()
+                       local lastTime = lastMessageTime[pairKey] or -9999
+                       
+                       if now - lastTime > CONFIG.messageCooldown then
+                           lastMessageTime[pairKey] = now
+                           -- 对话生成...
+                           -- 70% 概率触发前车嘲讽
+                           if math.random() > 0.3 then 
+                              local msgTable = MSG_POOL["REAR_TIER" .. currentTier]
+                              -- add3DMessage(TargetCarIndex, Text, Mood)
+                              if msgTable then add3DMessage(j, getRandomMsg(msgTable), currentTier) end
+                           end
+                           -- 30% 概率触发后车心里话 (Optional, 也可以都触发)
+                           if math.random() > 0.7 then 
+                               -- Front Tier messages are for chaser
+                              local msgTable = MSG_POOL["FRONT_TIER" .. currentTier]
+                               -- add3DMessage(ChaserIndex, Text, Mood)
+                              if msgTable then add3DMessage(i, getRandomMsg(msgTable), currentTier) end
+                           end
+                       end
+                    end
+                end
 
                 lastDistances[pairKey] = currentTier
                 lastDistances[pairKey .. "_locked"] = isLocked
@@ -454,6 +490,38 @@ function script.drawUI(dt)
   local sim = ac.getSim()
   local player = ac.getCar(sim.focusedCar)
   
+  -- [Fix] 绘制 3D 弹幕 (Danmaku)
+  ui.pushFont(ui.Font.Title)
+  for idx, popup in pairs(carPopups) do
+       local pCar = ac.getCar(idx)
+       if pCar then
+           -- 简单的向上飘动动画
+           popup.offset.y = popup.offset.y + dt * 0.5
+           
+           local headPos = pCar.position + vec3(0, 1.5 + popup.offset.y, 0)
+           local proj = render.projectPoint(headPos)
+           
+           -- 检查是否在屏幕内 (且在前方 z > 0)
+           if proj.z > 0 and proj.x > -0.2 and proj.x < 1.2 and proj.y > -0.2 and proj.y < 1.2 then
+                -- 淡入淡出
+                local alpha = 1.0
+                if popup.age < 0.5 then alpha = popup.age / 0.5 end
+                local timeLeft = CONFIG.messageLife - popup.age
+                if timeLeft < 1.0 then alpha = timeLeft end
+                
+                local col = popup.color:clone()
+                col.mult = alpha
+                
+                local screenPos = vec2(proj.x * windowSize.x, proj.y * windowSize.y)
+                
+                -- 绘制描边文本 (为了看清)
+                ui.setCursor(screenPos - vec2(100, 15)) -- 简单居中修正
+                ui.textColored(popup.text, col)
+           end
+       end
+  end
+  ui.popFont()
+
   -- 1. 表情包逻辑 (Face Logic) -- 独立逻辑，保留遍历
   if player then
       for i = 0, sim.carsCount - 1 do
