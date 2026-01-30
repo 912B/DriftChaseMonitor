@@ -482,15 +482,7 @@ function script.drawUI(dt)
                    ui.popFont()
               end
               
-              -- Locked Text
-              if activeTarget.isLocked and not isPerfect then
-                  ui.pushFont(ui.Font.Small)
-                  local lText = "LOCKED"
-                  local sz = ui.measureText(lText)
-                  ui.setCursor(barPos + vec2(barWidth/2 - sz.x/2, barHeight + 2))
-                  ui.textColored(lText, rgbm(0, 1, 1, 0.7))
-                  ui.popFont()
-              end
+
           end
       end
   end
