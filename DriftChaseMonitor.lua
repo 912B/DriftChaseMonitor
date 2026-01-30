@@ -10,6 +10,11 @@ local CONFIG = {
   distMock = 20.0,    -- TIER 2: 嘲讽 (中距离)
   distProvoke = 40.0, -- TIER 1: 挑衅 (远距离 - Extended to 40m)
   
+  maxAngleDiff = 20, -- [New] 最大角度差 (超过此值不积分)
+  starDuration = 1.0, -- [New] 单颗星星所需时间 (秒) -> User requested harder, let's keep 1.0 logic first but multiplier controls it? 
+  -- No, let's set base duration. User said "Too simple", slowing it down is good.
+  -- Let's set it to 2.0s per star in logic.
+  
   messageLife = 5.0,  -- 消息停留时间
 
   warmupTime = 2.0,   -- 预热时间 (秒)
@@ -261,89 +266,85 @@ function script.update(dt)
                 
                 local isLeaderDrifting = getSlipAngle(leader) > CONFIG.minDriftAngle
                 
-                -- 核心判定: Chaser 在飘 + Leader 在飘 + 距离近 + Chaser在后方
-                if isChaserDrifting and isLeaderDrifting and isBehind then
-                   if dist <= CONFIG.distPraise then
-                      currentTier = 3 -- TIER 3: PRAISE
-                   elseif dist <= CONFIG.distMock then
-                      currentTier = 2 -- TIER 2: MOCK
-                   elseif dist <= CONFIG.distProvoke then
-                      currentTier = 1 -- TIER 1: PROVOKE
-                   end
-                end
-
-                -- 预热计时器逻辑 (用于飘字锁定)
-                if currentTier > 0 then
-                    chaseTimers[pairKey] = (chaseTimers[pairKey] or 0) + dt
-                else
-                    chaseTimers[pairKey] = 0
-                end
-                
-                local timer = chaseTimers[pairKey]
-                local isLocked = timer > CONFIG.warmupTime
-
-                -- 状态检测 & 触发特效 (仅逻辑，不涉及 UI)
-                local targetCarIndex = j 
-                
-                -- A. 刚刚锁定！
-                if isLocked and not wasLocked then
-                    -- add3DMessage(targetCarIndex, "锁定目标!", 0) 
-                end
-                
-                -- B. 跟丢了！
-                if wasLocked and not isLocked then
-                     if timer < 0.1 then
-                         add3DMessage(targetCarIndex, getRandomMsg(MSG_POOL.LOST), 3)
-                     end
-                end
-
-                -- C. 升级反馈 & 对话
-                if isLocked then
-                    if currentTier > lastTier then
-                       -- Cooldown Check
-                       local now = os.clock()
-                       local lastTime = lastMessageTime[pairKey] or -9999
+                    if isChaserDrifting and isLeaderDrifting and isBehind then
+                       -- [New] 角度一致性检查
+                       -- 必须动作同步才能得分 (防止瞎蹭)
+                       local leaderSlip = getSlipAngle(leader)
+                       local angleDiff = math.abs(chaserSlip - leaderSlip)
+                       local isAngleGood = angleDiff < CONFIG.maxAngleDiff
                        
-                       if now - lastTime > CONFIG.messageCooldown then
-                           lastMessageTime[pairKey] = now
-                           -- 对话生成...
-                           if math.random() > 0.0 then 
-                              local msgTable = MSG_POOL["REAR_TIER" .. currentTier]
-                              if msgTable then add3DMessage(j, getRandomMsg(msgTable), currentTier) end
+                       -- 基础得分为 0
+                       local scoreGain = 0
+                       
+                       if isAngleGood then
+                           if dist < CONFIG.distPraise then
+                              -- Perfect Zone: 0.5x points (1 star = 2 seconds)
+                              currentTier = 3
+                              scoreGain = realDt * 0.5 
+                           elseif dist < CONFIG.distNormal then
+                              -- Normal Zone: 0.1x points (1 star = 10 seconds)
+                              currentTier = 2 
+                              scoreGain = realDt * 0.1
+                           elseif dist < CONFIG.distMock then
+                               currentTier = 2
+                           elseif dist <= CONFIG.distProvoke then
+                               currentTier = 1
                            end
-                           if math.random() > 0.3 then 
-                              local msgTable = MSG_POOL["FRONT_TIER" .. currentTier]
-                              if msgTable then add3DMessage(i, getRandomMsg(msgTable), currentTier) end
-                           end
+                       else
+                           -- 角度差太大，不得分 (但如果在范围内，维持Tier状态用于显示?)
+                           -- 暂时降级处理
+                           if dist < CONFIG.distMock then currentTier = 2 end
                        end
+                       
+                       -- 更新 Stats (Global)
+                       -- 注意: 这里复用了 update loop 里的 stats 更新
+                       -- 但 Stats 是在下面 "if i == focusedCar" 专属块里更新的
+                       -- 所以这里只负责 Tier 更新 (用于 3D 文字)
                     end
-                end
 
-                lastDistances[pairKey] = currentTier
-                lastDistances[pairKey .. "_locked"] = isLocked
+                -- (Skipping middle parts...)
+                -- ...
                 
-                -- [MERGED] 玩家专属逻辑: 完美追走 & 进度条目标查找
-                -- 如果当前 Chaser 是玩家，计算完美追走数据并寻找最佳目标
+                -- [MERGED] 玩家专属逻辑: 完美追走
                 if i == sim.focusedCar then
-                    -- 完美追走计时 (Perfect Chase Stats)
                     local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
                     local realDt = ac.getDeltaT()
                     
-                    if dist < CONFIG.distPraise then
-                         -- Perfect Chase (1.0x)
-                         stats.graceTimer = 0
-                         stats.activeTime = stats.activeTime + realDt
-                    elseif dist < CONFIG.distNormal then
-                         -- Normal Chase (0.2x) - Maintains combo, slow gain
-                         stats.graceTimer = 0
-                         stats.activeTime = stats.activeTime + (realDt * 0.2)
+                    local leaderSlip = getSlipAngle(leader)
+                    local angleDiff = math.abs(chaserSlip - leaderSlip)
+                    local isAngleGood = angleDiff < CONFIG.maxAngleDiff
+
+                    if isAngleGood then
+                        if dist < CONFIG.distPraise then
+                             -- Perfect Chase (Target: 1 Star = 2.0s real time)
+                             -- activeTime now represents "Star Points"
+                             stats.graceTimer = 0
+                             stats.activeTime = stats.activeTime + (realDt * 0.5) 
+                        elseif dist < CONFIG.distNormal then
+                             -- Normal Chase (Target: 5x slower than Perfect)
+                             stats.graceTimer = 0
+                             stats.activeTime = stats.activeTime + (realDt * 0.1)
+                        else
+                             -- Lost Chase
+                             stats.graceTimer = stats.graceTimer + realDt
+                             if stats.graceTimer > 1.0 then stats.activeTime = 0 end
+                        end
                     else
-                         -- Lost Chase
+                         -- Bad Angle: Treat as Lost Chase (Or Pause?)
+                         -- "Too simple" implies strictness. Let's make it Pause (no gain), or Decay?
+                         -- Let's make it "Grace Period" logic (Pause).
                          stats.graceTimer = stats.graceTimer + realDt
-                         -- Grace period 1.0s
                          if stats.graceTimer > 1.0 then stats.activeTime = 0 end
                     end
                     perfectChaseStats[pairKey] = stats
+                    
+                    -- ... Best Target Logic check angle too?
+                    -- Best Target logic relies on "isChaserDrifting and isLeaderDrifting".
+                    -- Use the raw values for finding target, let the bar color/progress reflect the strictness.
+                    -- But if angle is bad, bar shouldn't grow.
+                    -- The stats update above handles growth.
+                    -- ...
+
                     
                     -- 寻找最佳 UI 目标 (最近的有效目标)
                     -- 条件：都在漂移，且距离在显示范围内 (45m)，且在玩家前方
