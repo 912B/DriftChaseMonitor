@@ -447,12 +447,16 @@ function script.drawUI(dt)
           if car and car.isConnected then
             local dirToCar = (car.position - player.position):normalize()
             local dot = player.look:dot(dirToCar)
-            local dist = math.distance(player.position, car.position)
+            
+            -- [Fix] 距离计算优化: 减去 2.0米 (模拟车门贴车门的车宽补偿)
+            -- 实际接触时，中心点距离约为 1.8-2.0米
+            local rawDist = math.distance(player.position, car.position)
+            local dist = math.max(0, rawDist - 2.0)
             
             -- [Fix] 增加追走判定: 目标必须在漂移 (速度 > minSpeed 且 角度 > minDriftAngle)
             local isDrifting = car.speedKmh > CONFIG.minSpeed and getSlipAngle(car) > CONFIG.minDriftAngle
             
-            if isDrifting and dot > 0.5 and dist < 45.0 then
+            if isDrifting and dot > 0.5 and rawDist < 45.0 then -- 筛选范围用原始距离更稳
                if dist < minFrontDist then
                   minFrontDist = dist
                   bestTargetIndex = i
