@@ -451,18 +451,10 @@ function script.drawUI(dt)
               local progress = 1.0 - math.clamp(dist / 45.0, 0, 1)
               
               -- Draw
-              ui.drawRectFilled(barPos, barPos + vec2(barWidth, barHeight), rgbm(0, 0, 0, 0.5), 2)
-              local fillW = barWidth * progress
-              if fillW > 2 then
-                  ui.drawRectFilled(barPos, barPos + vec2(fillW, barHeight), rgbm(0, 1, 0, 0.9), 2)
-              end
-              
-              -- Perfect Chase Timer
+              -- Perfect Chase Timer Calculation
               local pairKey = player.index .. "_" .. bestTargetIndex
               local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
-              
-              -- 使用用户配置的 "T3 Priaise" 距离 (3.0)
-              local realDt = ac.getDeltaT() -- [Fix] 确保获取正确的帧时间
+              local realDt = ac.getDeltaT()
               
               if dist < CONFIG.distPraise then
                   stats.graceTimer = 0
@@ -472,17 +464,39 @@ function script.drawUI(dt)
                   if stats.graceTimer > 1.0 then stats.activeTime = 0 end
               end
               perfectChaseStats[pairKey] = stats
+
+              -- Draw Bar
+              local isPerfect = stats.activeTime >= 1.0
+              local barColor = isPerfect and rgbm(1, 0.84, 0, 1) or rgbm(0, 1, 0, 0.9)
               
-              -- [Debug] 始终显示计时器，方便玩家看到进度
+              ui.drawRectFilled(barPos, barPos + vec2(barWidth, barHeight), rgbm(0, 0, 0, 0.5), 2)
+              local fillW = barWidth * progress
+              if fillW > 2 then
+                  ui.drawRectFilled(barPos, barPos + vec2(fillW, barHeight), barColor, 2)
+              end
+              
+              
+              -- Timer Text Display
               if stats.activeTime > 0.1 then
-                   local tStr = string.format("%.1fs", stats.activeTime)
-                   ui.pushFont(ui.Font.Title)
+                   local tStr = ""
+                   local textColor = rgbm(1, 1, 1, 1)
+                   local font = ui.Font.Title
+                   
+                   if isPerfect then
+                       tStr = string.format("PERFECT CHAIN: %.1fs", stats.activeTime)
+                       textColor = rgbm(1, 0.84, 0, 1) -- Gold
+                       -- Make it pulse brightness slightly
+                       local pulse = 0.8 + 0.2 * math.sin(os.clock() * 10)
+                       textColor.mult = pulse
+                   else
+                       tStr = string.format("%.1fs", stats.activeTime)
+                       textColor = rgbm(0.7, 0.7, 0.7, 0.8) -- Gray
+                   end
+                   
+                   ui.pushFont(font)
                    local sz = ui.measureText(tStr)
                    
-                   -- Color: Gold if locked (>1.0), Gray if accumulating
-                   local textColor = (stats.activeTime >= 1.0) and rgbm(1, 0.84, 0, 1) or rgbm(0.7, 0.7, 0.7, 0.8)
-                   
-                   -- Draw right of bar or above (Above chosen)
+                   -- Draw centered above bar
                    ui.setCursor(barPos + vec2(barWidth/2 - sz.x/2, -35))
                    ui.textColored(tStr, textColor)
                    ui.popFont()
