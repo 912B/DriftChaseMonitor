@@ -464,7 +464,6 @@ function script.drawUI(dt)
               local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
               
               -- 使用用户配置的 "T3 Priaise" 距离 (3.0)
-              -- 使用用户配置的 "T3 Priaise" 距离 (3.0)
               local realDt = ac.getDeltaT() -- [Fix] 确保获取正确的帧时间
               
               if dist < CONFIG.distPraise then
