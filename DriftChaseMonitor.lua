@@ -183,8 +183,8 @@ local MSG_POOL = {
   
   -- LOST (通用)
   LOST = { 
-	"迷路了?", "人呢?", "驾照买的?", "我在终点等你", "回家练练吧!",
-	"完全跟不住!", "这就放弃了?", "甚至看不到尾灯...", "慢得像蜗牛!",
+    "迷路了?", "人呢?", "驾照买的?", "我在终点等你", "回家练练吧!",
+    "完全跟不住!", "这就放弃了?", "甚至看不到尾灯...", "慢得像蜗牛!",
     "甚至以为你掉线了!", "打个车过来吧!", "回家练练吧!"
   }
 }
@@ -649,23 +649,50 @@ function script.drawUI(dt)
   ui.endTransparentWindow()
 end
 
--- 3D 绘制 (仅保留粒子效果)
--- 3D 绘制 (仅保留文字气泡)
+-- 3D 绘制 (仅保留文字气泡 - 带性能限制)
 function script.draw3D(dt)
   -- 保留 "Car Popups" (文字气泡)
   local sim = ac.getSim()
   local player = ac.getCar(sim.focusedCar)
   if not player then return end
 
+  -- [Optimization] Render Budget
+  -- 收集所有需要渲染的 candidates
+  local candidates = {} 
+  
   for i = 0, sim.carsCount - 1 do
     local popup = carPopups[i]
     if popup then
        local car = ac.getCar(i)
        if car then
          local dist = math.distance(player.position, car.position)
-         local distAlpha = math.clamp(1 - (dist - 40)/20, 0, 1)
-         
-         if distAlpha > 0.05 then
+         -- Distance Culling (Far)
+         if dist < 60 then
+             table.insert(candidates, {
+                 idx = i,
+                 dist = dist,
+                 car = car,
+                 popup = popup
+             })
+         end
+       end
+    end
+  end
+  
+  -- 按距离排序 (最近的优先)
+  table.sort(candidates, function(a,b) return a.dist < b.dist end)
+  
+  -- 只渲染最近的 10 个 (防止 lag)
+  local renderLimit = 10
+  for k, item in ipairs(candidates) do
+      if k > renderLimit then break end
+      
+      local popup = item.popup
+      local car = item.car
+      local dist = item.dist
+      
+      local distAlpha = math.clamp(1 - (dist - 40)/20, 0, 1)
+      if distAlpha > 0.05 then
             local alpha = math.min(1, CONFIG.messageLife - popup.age)
             if alpha > 0.05 then
                  -- Animation
@@ -689,9 +716,7 @@ function script.draw3D(dt)
                  col.mult = finalAlpha
                  render.debugText(bubblePos, popup.text, col, 3.0 * popScale)
             end
-         end
-       end
-    end
+      end
   end
 end
 
