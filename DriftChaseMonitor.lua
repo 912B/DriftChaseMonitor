@@ -176,7 +176,7 @@ local MSG_POOL = {
   -- LOST (通用)
   LOST = { 
 	"迷路了?", "人呢?", "驾照买的?", "我在终点等你", "回家练练吧!",
-	"完全跟不住!", "这就放弃了?", "甚至看不到尾灯...", "慢得像乌龟!",
+	"完全跟不住!", "这就放弃了?", "甚至看不到尾灯...", "慢得像蜗牛!",
     "甚至以为你掉线了!", "打个车过来吧!", "回家练练吧!"
   }
 }
@@ -326,7 +326,10 @@ function script.update(dt)
                     local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
                     local realDt = ac.getDeltaT()
                     
-                    if rawDist < CONFIG.distPraise then
+                    -- [Fix] Restore distance compensation like UI (Raw - 2.0m)
+                    local uiDist = math.max(0, rawDist - 2.0)
+                    
+                    if uiDist < CONFIG.distPraise then
                          stats.graceTimer = 0
                          stats.activeTime = stats.activeTime + realDt
                     else
