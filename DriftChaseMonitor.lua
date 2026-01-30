@@ -721,20 +721,18 @@ function script.draw3D(dt)
 end
 
 -- [New] 聊天消息接入 (Chat Integration)
-local lastChat = { text = "", time = 0, sender = -1 }
-
-ac.onChatMessage(function(msg, senderIndex)
+ac.onChatMessage(function(msg, senderName, senderCarIndex)
     -- 过滤掉自己发的消息(可选, 这里都显示)
-    -- 注意: senderIndex 是 carIndex
-    if senderIndex and senderIndex >= 0 and senderIndex < ac.getSim().carsCount then
-        -- [Fix] Debounce Logic (防止重复渲染)
-        local now = os.clock()
-        if msg == lastChat.text and senderIndex == lastChat.sender and (now - lastChat.time) < 1.0 then
-            return -- Duplicate message detected within 1s
+    local carIndex = senderCarIndex
+    if carIndex and carIndex >= 0 and carIndex < ac.getSim().carsCount then
+        -- [Fix] Smart Dedup (防止重复渲染)
+        -- 检查该车辆是否已经在显示这条消息 (且处于初始阶段 < 1.0s)
+        local existing = carPopups[carIndex]
+        if existing and existing.text == msg and existing.age < 1.0 then
+            return -- Duplicate message detected (Echo)
         end
-        lastChat = { text = msg, time = now, sender = senderIndex }
         
         -- Mood 4 = Green (Chat)
-        add3DMessage(senderIndex, msg, 4)
+        add3DMessage(carIndex, msg, 4)
     end
 end)
