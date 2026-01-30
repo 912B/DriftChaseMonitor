@@ -513,34 +513,31 @@ function script.drawUI(dt)
                    
                    for s = 1, STAR_Count do
                        local sPos = vec2(startX + (s-1) * (starSize.x + spacing), startY)
-                       local col = baseCol
-                       local scale = 1.0
                        
                        if s < activeStarIndex then
-                           -- Already filled
-                           col = fillCol
-                       elseif s == activeStarIndex then
-                           -- Currently filling (Pulse size + Lerp Color)
-                           local t = activeStarProgress
-                           -- Lerp color
-                           col = vec4(
-                               baseCol.r + (fillCol.r - baseCol.r) * t,
-                               baseCol.g + (fillCol.g - baseCol.g) * t,
-                               baseCol.b + (fillCol.b - baseCol.b) * t,
-                               1 -- Alpha always 1 for active
-                           )
-                           -- Pulse size
-                           scale = 1.0 + 0.3 * math.sin(t * 3.14)
+                           -- Fully filled
+                           ui.setCursor(sPos)
+                           ui.textColored(starStr, fillCol)
+                       elseif s > activeStarIndex then
+                           -- Empty (Base Color)
+                           ui.setCursor(sPos)
+                           ui.textColored(starStr, baseCol)
                        else
-                           -- Not yet reached
-                           col = baseCol
+                           -- Currently filling (Progressive Cut)
+                           -- 1. Draw Base
+                           ui.setCursor(sPos)
+                           ui.textColored(starStr, baseCol)
+                           
+                           -- 2. Draw Fill Clipped
+                           local t = activeStarProgress
+                           local clipMin = sPos
+                           local clipMax = sPos + vec2(starSize.x * t, starSize.y)
+                           
+                           ui.pushClipRect(clipMin, clipMax, true)
+                           ui.setCursor(sPos)
+                           ui.textColored(starStr, fillCol)
+                           ui.popClipRect()
                        end
-                       
-                       ui.setCursor(sPos)
-                       -- Optional: Scale adjustment needs offset correction, simplified for now
-                       -- Text scale via window font scale is global, tricky. 
-                       -- Just use color lerp for smoothness.
-                       ui.textColored(starStr, col)
                    end
                    ui.popFont()
               end
