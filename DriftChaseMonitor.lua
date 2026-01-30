@@ -302,7 +302,7 @@ function script.update(dt)
                        -- 但 Stats 是在下面 "if i == focusedCar" 专属块里更新的
                        -- 所以这里只负责 Tier 更新 (用于 3D 文字)
                     end
-                end -- End generic checks
+
 
                 -- 预热计时器逻辑 (用于飘字锁定)
                 if currentTier > 0 then
