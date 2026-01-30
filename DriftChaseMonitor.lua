@@ -315,15 +315,19 @@ function script.update(dt)
                     local isAngleGood = angleDiff < CONFIG.maxAngleDiff
 
                     if isAngleGood then
+                        -- [New] 几何难度递增 (Geometric Difficulty)
+                        -- 随着等级提升 (颜色变化)，涨星速度几何级下降
+                        local currentLevel = math.floor(stats.activeTime / 5)
+                        local levelPenalty = 1.0 / math.pow(1.5, currentLevel)
+                        
                         if dist < CONFIG.distPraise then
-                             -- Perfect Chase (Target: 1 Star = 2.0s real time)
-                             -- activeTime now represents "Star Points"
+                             -- Perfect Chase (Base: 0.5/s) * Penalty
                              stats.graceTimer = 0
-                             stats.activeTime = stats.activeTime + (realDt * 0.5) 
+                             stats.activeTime = stats.activeTime + (realDt * 0.5 * levelPenalty) 
                         elseif dist < CONFIG.distNormal then
-                             -- Normal Chase (Target: 5x slower than Perfect)
+                             -- Normal Chase (Base: 0.1/s) * Penalty
                              stats.graceTimer = 0
-                             stats.activeTime = stats.activeTime + (realDt * 0.1)
+                             stats.activeTime = stats.activeTime + (realDt * 0.1 * levelPenalty)
                         else
                              -- Lost Chase
                              stats.graceTimer = stats.graceTimer + realDt
