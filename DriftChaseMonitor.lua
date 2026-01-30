@@ -329,10 +329,17 @@ function script.update(dt)
                     local realDt = ac.getDeltaT()
                     
                     if dist < CONFIG.distPraise then
+                         -- Perfect Chase (1.0x)
                          stats.graceTimer = 0
                          stats.activeTime = stats.activeTime + realDt
+                    elseif dist < CONFIG.distMock then
+                         -- Normal Chase (0.2x) - Maintains combo, slow gain
+                         stats.graceTimer = 0
+                         stats.activeTime = stats.activeTime + (realDt * 0.2)
                     else
+                         -- Lost Chase
                          stats.graceTimer = stats.graceTimer + realDt
+                         -- Grace period 1.0s
                          if stats.graceTimer > 1.0 then stats.activeTime = 0 end
                     end
                     perfectChaseStats[pairKey] = stats
