@@ -443,6 +443,11 @@ function script.drawUI(dt)
               local barHeight = 8
               local barPos = screenPos - vec2(barWidth / 2, 0) -- Centered
               
+              -- [Debug] 显示实时距离数值，方便调试判定范围
+              ui.pushFont(ui.Font.Small)
+              ui.textColored(string.format("Dist: %.1fm", dist), barPos + vec2(barWidth + 5, -5), rgbm(1, 1, 1, 0.8))
+              ui.popFont()
+              
               -- Progress
               local progress = 1.0 - math.clamp(dist / 45.0, 0, 1)
               
@@ -458,21 +463,29 @@ function script.drawUI(dt)
               local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
               
               -- 使用用户配置的 "T3 Priaise" 距离 (3.0)
+              -- 使用用户配置的 "T3 Priaise" 距离 (3.0)
+              local realDt = ac.getDeltaT() -- [Fix] 确保获取正确的帧时间
+              
               if dist < CONFIG.distPraise then
                   stats.graceTimer = 0
-                  stats.activeTime = stats.activeTime + (dt or 0.016) -- Fallback if dt is nil
+                  stats.activeTime = stats.activeTime + realDt
               else
-                  stats.graceTimer = stats.graceTimer + (dt or 0.016)
+                  stats.graceTimer = stats.graceTimer + realDt
                   if stats.graceTimer > 1.0 then stats.activeTime = 0 end
               end
               perfectChaseStats[pairKey] = stats
               
-              if stats.activeTime >= 1.0 then
+              -- [Debug] 始终显示计时器，方便玩家看到进度
+              if stats.activeTime > 0.1 then
                    local tStr = string.format("%.1fs", stats.activeTime)
                    ui.pushFont(ui.Font.Title)
                    local sz = ui.measureText(tStr)
+                   
+                   -- Color: Gold if locked (>1.0), Gray if accumulating
+                   local textColor = (stats.activeTime >= 1.0) and rgbm(1, 0.84, 0, 1) or rgbm(0.7, 0.7, 0.7, 0.8)
+                   
                    -- Draw right of bar or above (Above chosen)
-                   ui.textColored(tStr, barPos + vec2(barWidth/2 - sz.x/2, -35), rgbm(1, 0.84, 0, 1))
+                   ui.textColored(tStr, barPos + vec2(barWidth/2 - sz.x/2, -35), textColor)
                    ui.popFont()
               end
               
