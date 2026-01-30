@@ -5,7 +5,7 @@
 local CONFIG = {
   minDriftAngle = 10, -- 最小漂移角度
   minSpeed = 20,      -- 最小速度
-  distPraise = 3.0,   -- TIER 3: 贴贴 (赞扬/阴阳)
+  distPraise = 2.0,   -- TIER 3: 贴贴 (赞扬/阴阳)
   distMock = 20.0,    -- TIER 2: 嘲讽 (中距离)
   distProvoke = 40.0, -- TIER 1: 挑衅 (远距离 - Extended to 40m)
   
@@ -131,9 +131,7 @@ local function getSlipAngle(car)
   return math.deg(math.acos(dot))
 end
 
--- 文本库 (中文版 - 双向嘲讽版)
--- 文本库 (中文版 - 双向嘲讽版 - Expanded)
--- 文本库 (中文版 - 3 Tiers)
+
 local MSG_POOL = {
   -- (A) 后车视角 (Chaser -> Leader)
   -- TIER 3: 贴贴 (<3m) - 阴阳/赞扬
@@ -204,6 +202,13 @@ local function add3DMessage(carIndex, text, mood)
   }
 end
 
+-- 活跃的追踪目标 (用于 UI 显示)
+local activeTarget = {
+    index = -1,
+    dist = 0,
+    stats = nil
+}
+
 -- 主更新逻辑 (Global Loop)
 function script.update(dt)
   -- 2. 更新 3D 粒子 (已移除)
@@ -218,26 +223,32 @@ function script.update(dt)
 
   -- 4. 全局漂移追走检测 (N * N)
   local sim = ac.getSim()
-  -- 我们不再只检查 focusedCar，而是检查所有车对之间的关系
+  local player = ac.getCar(sim.focusedCar)
   
-  for i = 0, sim.carsCount - 1 do -- Chaser (追击者)
+  -- 重置本帧最佳目标
+  local frameBestTarget = nil
+  local minFrontDist = 99999
+  
+  -- 遍历所有可能的追击者 (Chaser)
+  for i = 0, sim.carsCount - 1 do 
     local chaser = ac.getCar(i)
     if chaser and chaser.isConnected then
        -- 检查 Chaser 状态
        local chaserSlip = getSlipAngle(chaser)
        local isChaserDrifting = chaserSlip > CONFIG.minDriftAngle and chaser.speedKmh > CONFIG.minSpeed
        
-       for j = 0, sim.carsCount - 1 do -- Leader (前车/被追击者)
+       -- 遍历前车 (Leader)
+       for j = 0, sim.carsCount - 1 do 
          if i ~= j then
             local leader = ac.getCar(j)
             if leader and leader.isConnected then
-                local dist = math.distance(chaser.position, leader.position)
+                local rawDist = math.distance(chaser.position, leader.position)
                 
                 -- 判断前后关系: Chaser 必须在 Leader 后方/侧后方
                 local dirToChaser = (chaser.position - leader.position):normalize()
                 local isBehind = leader.look:dot(dirToChaser) < 0.2
                 
-                -- Key for this pair: "chaser_i_leader_j"
+                -- Key for this pair
                 local pairKey = i .. "_" .. j
                 
                 -- 读取上一帧状态
@@ -249,16 +260,16 @@ function script.update(dt)
                 
                 -- 核心判定: Chaser 在飘 + Leader 在飘 + 距离近 + Chaser在后方
                 if isChaserDrifting and isLeaderDrifting and isBehind then
-                   if dist <= CONFIG.distPraise then
-                      currentTier = 3 -- TIER 3: PRAISE / INSANE
-                   elseif dist <= CONFIG.distMock then
+                   if rawDist <= CONFIG.distPraise then
+                      currentTier = 3 -- TIER 3: PRAISE
+                   elseif rawDist <= CONFIG.distMock then
                       currentTier = 2 -- TIER 2: MOCK
-                   elseif dist <= CONFIG.distProvoke then
+                   elseif rawDist <= CONFIG.distProvoke then
                       currentTier = 1 -- TIER 1: PROVOKE
                    end
                 end
 
-                -- 预热计时器逻辑
+                -- 预热计时器逻辑 (用于飘字锁定)
                 if currentTier > 0 then
                     chaseTimers[pairKey] = (chaseTimers[pairKey] or 0) + dt
                 else
@@ -268,66 +279,93 @@ function script.update(dt)
                 local timer = chaseTimers[pairKey]
                 local isLocked = timer > CONFIG.warmupTime
 
-                -- 状态检测 & 触发特效 (特效生成在 Leader 身上，因为是 Leader 被贴了)
-                local targetCarIndex = j -- 文字显示在 Leader 头上
+                -- 状态检测 & 触发特效 (仅逻辑，不涉及 UI)
+                local targetCarIndex = j 
                 
                 -- A. 刚刚锁定！
                 if isLocked and not wasLocked then
-                    -- Leader 吐槽: "被锁定了!"
                     -- add3DMessage(targetCarIndex, "锁定目标!", 0) 
                 end
                 
-                -- B. 跟丢了！(从锁定状态变为非锁定)
+                -- B. 跟丢了！
                 if wasLocked and not isLocked then
                      if timer < 0.1 then
                          add3DMessage(targetCarIndex, getRandomMsg(MSG_POOL.LOST), 3)
                      end
                 end
 
-                -- C. 升级反馈 & 持续特效
+                -- C. 升级反馈 & 对话
                 if isLocked then
                     if currentTier > lastTier then
-                       -- [New] Cooldown Check
+                       -- Cooldown Check
                        local now = os.clock()
                        local lastTime = lastMessageTime[pairKey] or -9999
                        
                        if now - lastTime > CONFIG.messageCooldown then
                            lastMessageTime[pairKey] = now
-                           
-                           -- 1. 前车说话 (Leader -> Chaser) : REAR_TIERx
+                           -- 对话生成...
                            if math.random() > 0.0 then 
                               local msgTable = MSG_POOL["REAR_TIER" .. currentTier]
                               if msgTable then add3DMessage(j, getRandomMsg(msgTable), currentTier) end
                            end
-                           
-                           -- 2. 后车说话 (Chaser -> Leader) : FRONT_TIERx
                            if math.random() > 0.3 then 
                               local msgTable = MSG_POOL["FRONT_TIER" .. currentTier]
                               if msgTable then add3DMessage(i, getRandomMsg(msgTable), currentTier) end
                            end
-                           
-                           -- 粒子 (已移除)
-                           -- local particleAmount = (currentTier == 3) and 40 or ((currentTier == 2) and 20 or 5)
-                           -- spawn3DGlitter(leader.position, particleAmount)
-                           
-                           if i == sim.focusedCar then 
-                              -- Removed Combo
-                           end
                        end
-                    end
-                    
-                    -- 持续特效
-                    if currentTier >= 2 then
-                        -- 粒子 (已移除)
                     end
                 end
 
                 lastDistances[pairKey] = currentTier
                 lastDistances[pairKey .. "_locked"] = isLocked
+                
+                -- [MERGED] 玩家专属逻辑: 完美追走 & 进度条目标查找
+                -- 如果当前 Chaser 是玩家，计算完美追走数据并寻找最佳目标
+                if i == sim.focusedCar then
+                    -- 完美追走计时 (Perfect Chase Stats)
+                    local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
+                    
+                    if rawDist < CONFIG.distPraise then
+                         stats.graceTimer = 0
+                         stats.activeTime = stats.activeTime + dt
+                    else
+                         stats.graceTimer = stats.graceTimer + dt
+                         if stats.graceTimer > 1.0 then stats.activeTime = 0 end
+                    end
+                    perfectChaseStats[pairKey] = stats
+                    
+                    -- 寻找最佳 UI 目标 (最近的有效目标)
+                    -- 条件：都在漂移，且距离在显示范围内 (45m)，且在玩家前方
+                    -- 注意: 这里复用 loop 中的 isChaserDrifting, isLeaderDrifting
+                    -- 但需要额外的 dot check 确保在我们前方 (UI 显示用)
+                    local playerLookDot = player.look:dot( (leader.position - chaser.position):normalize() )
+                    
+                    if isChaserDrifting and isLeaderDrifting and playerLookDot > 0.5 and rawDist < 45.0 then
+                        -- 距离修正 (UI用)
+                        local uiDist = math.max(0, rawDist - 2.0)
+                        if uiDist < minFrontDist then
+                            minFrontDist = uiDist
+                            frameBestTarget = {
+                                index = j,
+                                dist = uiDist,
+                                stats = stats,
+                                isLocked = isLocked
+                            }
+                        end
+                    end
+                end
             end
          end
        end
     end
+  end
+  
+  -- 更新全局状态供 drawUI 使用
+  if frameBestTarget then
+      activeTarget = frameBestTarget
+  else
+      -- 如果这一帧没有目标，快速重置(或保留上一帧? 还是重置吧以免UI卡住)
+      activeTarget = { index = -1, dist = 0, stats = nil }
   end
 end
 
@@ -344,50 +382,36 @@ function script.drawUI(dt)
   local sim = ac.getSim()
   local player = ac.getCar(sim.focusedCar)
   
-  -- 1. 表情包逻辑 (Face Logic)
+  -- 1. 表情包逻辑 (Face Logic) -- 独立逻辑，保留遍历
   if player then
-      -- 遍历所有车辆
       for i = 0, sim.carsCount - 1 do
            local car = ac.getCar(i)
            if car and car.isConnected and i ~= sim.focusedCar then
                local dist = math.distance(car.position, player.position)
-               
-               -- 只显示一定范围内的 (例如 60米)
                if dist < 60 then
-                   -- Face Logic
                    local faceUrl = FACES_CONFIG.A
                    if dist < 5.0 then faceUrl = FACES_CONFIG.C
                    elseif dist < 15.0 then faceUrl = FACES_CONFIG.B
                    end
                    
-                   -- 投影
-                   -- [USER] 调高位置，放在名字上方 (2.2 -> 2.5)
                    local headPos = car.position + vec3(0, 2.5, 0) 
                    local proj = render.projectPoint(headPos)
                    
-                   -- 屏幕范围检查
                    if proj.x > -0.2 and proj.x < 1.2 and proj.y > -0.2 and proj.y < 1.2 then
                         local screenPos = vec2(proj.x * windowSize.x, proj.y * windowSize.y)
-                        
-                        -- 计算远近缩放
                         local scale = math.clamp(40 / math.max(1, dist), 0.5, 3.0) 
                         local baseSize = 45 
                         local sizePx = baseSize * scale
                         sizePx = math.clamp(sizePx, 25, 180) 
-                        
                         local size2D = vec2(sizePx, sizePx)
-                        local pos2D = screenPos - size2D * 0.5 -- 居中
+                        local pos2D = screenPos - size2D * 0.5
                         
-                        -- 绘制 Face
                         local facePath = TextureManager:get(faceUrl)
-                        
                         if facePath then
                              local distAlpha = math.clamp(1 - (dist - 40)/20, 0, 1)
                              if distAlpha > 0.05 then
                                  local col = rgbm(1,1,1, distAlpha)
                                  ui.drawImage(facePath, pos2D, pos2D + size2D, col)
-                                     
-                                 -- 画个圆描边
                                  local center = pos2D + size2D * 0.5
                                  local radius = sizePx * 0.6 
                                  ui.drawCircle(center, radius, col, 2.0)
@@ -399,42 +423,12 @@ function script.drawUI(dt)
       end
   end
   
-  -- 2. 距离进度条逻辑 (Distance Bar Logic)
-  if player then
-      -- Find Best Target (Local scope for bar only)
-      local bestTargetIndex = -1
-      local minFrontDist = 99999
-      for i = 0, sim.carsCount - 1 do
-        if i ~= player.index then
-          local car = ac.getCar(i)
-          if car and car.isConnected then
-            local dirToCar = (car.position - player.position):normalize()
-            local dot = player.look:dot(dirToCar)
-            
-            -- [Fix] 距离计算优化: 减去 2.0米 (模拟车门贴车门的车宽补偿)
-            -- 实际接触时，中心点距离约为 1.8-2.0米
-            local rawDist = math.distance(player.position, car.position)
-            local dist = math.max(0, rawDist - 2.0)
-            
-            -- [Fix] 双车漂移判定: 玩家和目标都必须在漂移状态
-            local isTargetDrifting = car.speedKmh > CONFIG.minSpeed and getSlipAngle(car) > CONFIG.minDriftAngle
-            local isPlayerDrifting = player.speedKmh > CONFIG.minSpeed and getSlipAngle(player) > CONFIG.minDriftAngle
-
-            -- 只有两人都在漂，且距离合适，且在前方，才视为有效追走目标
-            if isTargetDrifting and isPlayerDrifting and dot > 0.5 and rawDist < 45.0 then -- 筛选范围用原始距离更稳
-               if dist < minFrontDist then
-                  minFrontDist = dist
-                  bestTargetIndex = i
-               end
-            end
-          end
-        end
-      end
-      
-      if bestTargetIndex ~= -1 then
-          local targetCar = ac.getCar(bestTargetIndex)
-          local dist = minFrontDist
-          local headPos = targetCar.position + vec3(0, 1.4, 0) -- Slightly below face
+  -- 2. 距离进度条逻辑 (使用 update 计算好的 activeTarget)
+  if activeTarget.index ~= -1 and player then
+      local targetCar = ac.getCar(activeTarget.index)
+      if targetCar then
+          local dist = activeTarget.dist
+          local headPos = targetCar.position + vec3(0, 1.4, 0)
           local proj = render.projectPoint(headPos)
           
           if proj.x > -0.2 and proj.x < 1.2 and proj.y > -0.2 and proj.y < 1.2 then
@@ -443,30 +437,17 @@ function script.drawUI(dt)
               -- Bar Config
               local barWidth = 140
               local barHeight = 8
-              local barPos = screenPos - vec2(barWidth / 2, 0) -- Centered
-              
-
+              local barPos = screenPos - vec2(barWidth / 2, 0)
               
               -- Progress
               local progress = 1.0 - math.clamp(dist / 45.0, 0, 1)
-              
-              -- Draw
-              -- Perfect Chase Timer Calculation
-              local pairKey = player.index .. "_" .. bestTargetIndex
-              local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
-              local realDt = ac.getDeltaT()
-              
-              if dist < CONFIG.distPraise then
-                  stats.graceTimer = 0
-                  stats.activeTime = stats.activeTime + realDt
-              else
-                  stats.graceTimer = stats.graceTimer + realDt
-                  if stats.graceTimer > 1.0 then stats.activeTime = 0 end
-              end
-              perfectChaseStats[pairKey] = stats
+
+              -- Perfect Chase Timer
+              local stats = activeTarget.stats
+              local isPerfect = stats and (stats.activeTime >= 1.0) or false
+              local activeTime = stats and stats.activeTime or 0
 
               -- Draw Bar
-              local isPerfect = stats.activeTime >= 1.0
               local barColor = isPerfect and rgbm(1, 0.84, 0, 1) or rgbm(0, 1, 0, 0.9)
               
               ui.drawRectFilled(barPos, barPos + vec2(barWidth, barHeight), rgbm(0, 0, 0, 0.5), 2)
@@ -475,21 +456,20 @@ function script.drawUI(dt)
                   ui.drawRectFilled(barPos, barPos + vec2(fillW, barHeight), barColor, 2)
               end
               
-              
               -- Timer Text Display
-              if stats.activeTime > 0.1 then
+              if activeTime > 0.1 then
                    local tStr = ""
                    local textColor = rgbm(1, 1, 1, 1)
                    local font = ui.Font.Title
                    
                    if isPerfect then
-                       tStr = string.format("PERFECT CHAIN: %.1fs", stats.activeTime)
+                       tStr = string.format("PERFECT CHAIN: %.1fs", activeTime)
                        textColor = rgbm(1, 0.84, 0, 1) -- Gold
                        -- Make it pulse brightness slightly
                        local pulse = 0.8 + 0.2 * math.sin(os.clock() * 10)
                        textColor.mult = pulse
                    else
-                       tStr = string.format("%.1fs", stats.activeTime)
+                       tStr = string.format("%.1fs", activeTime)
                        textColor = rgbm(0.7, 0.7, 0.7, 0.8) -- Gray
                    end
                    
@@ -502,9 +482,8 @@ function script.drawUI(dt)
                    ui.popFont()
               end
               
-              -- Locked Text (Only if not in perfect mode to avoid clutter)
-              local chaseTimer = chaseTimers[pairKey] or 0
-              if chaseTimer > CONFIG.warmupTime and stats.activeTime < 1.0 then
+              -- Locked Text
+              if activeTarget.isLocked and not isPerfect then
                   ui.pushFont(ui.Font.Small)
                   local lText = "LOCKED"
                   local sz = ui.measureText(lText)
