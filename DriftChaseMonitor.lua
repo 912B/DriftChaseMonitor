@@ -345,8 +345,7 @@ function script.update(dt)
                     local playerLookDot = player.look:dot( (leader.position - chaser.position):normalize() )
                     
                     if isChaserDrifting and isLeaderDrifting and playerLookDot > 0.5 and rawDist < 45.0 then
-                        -- 距离修正 (UI用)
-                        local uiDist = math.max(0, rawDist - 2.0)
+                        -- 距离修正 (UI用) - Already calculated as uiDist above
                         if uiDist < minFrontDist then
                             minFrontDist = uiDist
                             frameBestTarget = {
