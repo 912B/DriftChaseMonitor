@@ -445,7 +445,8 @@ function script.drawUI(dt)
               
               -- [Debug] 显示实时距离数值，方便调试判定范围
               ui.pushFont(ui.Font.Small)
-              ui.textColored(string.format("Dist: %.1fm", dist), barPos + vec2(barWidth + 5, -5), rgbm(1, 1, 1, 0.8))
+              ui.setCursor(barPos + vec2(barWidth + 5, -5))
+              ui.textColored(string.format("Dist: %.1fm", dist), rgbm(1, 1, 1, 0.8))
               ui.popFont()
               
               -- Progress
@@ -485,7 +486,8 @@ function script.drawUI(dt)
                    local textColor = (stats.activeTime >= 1.0) and rgbm(1, 0.84, 0, 1) or rgbm(0.7, 0.7, 0.7, 0.8)
                    
                    -- Draw right of bar or above (Above chosen)
-                   ui.textColored(tStr, barPos + vec2(barWidth/2 - sz.x/2, -35), textColor)
+                   ui.setCursor(barPos + vec2(barWidth/2 - sz.x/2, -35))
+                   ui.textColored(tStr, textColor)
                    ui.popFont()
               end
               
@@ -495,7 +497,8 @@ function script.drawUI(dt)
                   ui.pushFont(ui.Font.Small)
                   local lText = "LOCKED"
                   local sz = ui.measureText(lText)
-                  ui.textColored(lText, barPos + vec2(barWidth/2 - sz.x/2, barHeight + 2), rgbm(0, 1, 1, 0.7))
+                  ui.setCursor(barPos + vec2(barWidth/2 - sz.x/2, barHeight + 2))
+                  ui.textColored(lText, rgbm(0, 1, 1, 0.7))
                   ui.popFont()
               end
           end
