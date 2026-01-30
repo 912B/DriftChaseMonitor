@@ -357,8 +357,9 @@ function script.update(dt)
                     if isAngleGood then
                         -- [New] 几何难度递增 (Geometric Difficulty)
                         -- 随着等级提升 (颜色变化)，涨星速度几何级下降
+                        -- User requested "Exponential Explosion": Changed base from 1.5 to 2.5
                         local currentLevel = math.floor(stats.activeTime / 5)
-                        local levelPenalty = 1.0 / math.pow(1.5, currentLevel)
+                        local levelPenalty = 1.0 / math.pow(2.5, currentLevel)
                         
                         if dist < CONFIG.distPraise then
                              -- Perfect Chase (Base: 0.2/s -> 5s/Star) * Penalty
