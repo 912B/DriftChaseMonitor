@@ -217,6 +217,7 @@ local activeTarget = {
 
 -- 主更新逻辑 (Global Loop)
 function script.update(dt)
+  local realDt = ac.getDeltaT() -- [Fix] Define realDt for global use
   -- 2. 更新 3D 粒子 (已移除)
   
   -- 3. 更新 3D 飘字
