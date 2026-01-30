@@ -721,9 +721,21 @@ function script.draw3D(dt)
 end
 
 -- [New] 聊天消息接入 (Chat Integration)
-ac.onChatMessage(function(msg, senderName, senderCarIndex)
-    -- 过滤掉自己发的消息(可选, 这里都显示)
-    local carIndex = senderCarIndex
+-- [New] 聊天消息接入 (Chat Integration)
+ac.onChatMessage(function(p1, p2, p3)
+    -- Robust detection: arguments vary by CSP version/server context
+    local msg = p1
+    local carIndex = -1
+    
+    if type(p2) == "number" then
+        carIndex = p2
+    elseif type(p3) == "number" then
+        carIndex = p3
+    end
+    
+    -- Debug Log
+    ac.log("DriftChaseChat: Msg="..tostring(msg).." Index="..tostring(carIndex))
+
     if carIndex and carIndex >= 0 and carIndex < ac.getSim().carsCount then
         -- [Fix] Smart Dedup (防止重复渲染)
         -- 检查该车辆是否已经在显示这条消息 (且处于初始阶段 < 1.0s)
