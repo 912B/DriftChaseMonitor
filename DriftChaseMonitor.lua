@@ -445,11 +445,7 @@ function script.drawUI(dt)
               local barHeight = 8
               local barPos = screenPos - vec2(barWidth / 2, 0) -- Centered
               
-              -- [Debug] 显示实时距离数值，方便调试判定范围
-              ui.pushFont(ui.Font.Small)
-              ui.setCursor(barPos + vec2(barWidth + 5, -5))
-              ui.textColored(string.format("Dist: %.1fm", dist), rgbm(1, 1, 1, 0.8))
-              ui.popFont()
+
               
               -- Progress
               local progress = 1.0 - math.clamp(dist / 45.0, 0, 1)
