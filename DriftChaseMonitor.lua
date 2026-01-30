@@ -279,13 +279,13 @@ function script.update(dt)
                        
                        if isAngleGood then
                            if dist < CONFIG.distPraise then
-                              -- Perfect Zone: 0.5x points (1 star = 2 seconds)
+                              -- Perfect Zone: 0.2x points (1 star = 5 seconds)
                               currentTier = 3
-                              scoreGain = realDt * 0.5 
+                              scoreGain = realDt * 0.2 
                            elseif dist < CONFIG.distNormal then
-                              -- Normal Zone: 0.1x points (1 star = 10 seconds)
+                              -- Normal Zone: 0.04x points (1 star = 25 seconds)
                               currentTier = 2 
-                              scoreGain = realDt * 0.1
+                              scoreGain = realDt * 0.04
                            elseif dist < CONFIG.distMock then
                                currentTier = 2
                            elseif dist <= CONFIG.distProvoke then
@@ -302,9 +302,23 @@ function script.update(dt)
                        -- 但 Stats 是在下面 "if i == focusedCar" 专属块里更新的
                        -- 所以这里只负责 Tier 更新 (用于 3D 文字)
                     end
+                end -- End generic checks
 
-                -- (Skipping middle parts...)
-                -- ...
+                -- 预热计时器逻辑 (用于飘字锁定)
+                if currentTier > 0 then
+                    chaseTimers[pairKey] = (chaseTimers[pairKey] or 0) + dt
+                else
+                    chaseTimers[pairKey] = 0
+                end
+                
+                local timer = chaseTimers[pairKey]
+                local isLocked = timer > CONFIG.warmupTime
+
+                -- 状态检测 & 触发特效 (仅逻辑，不涉及 UI)
+                -- ... (Skipping 3D Text logic)
+
+                lastDistances[pairKey] = currentTier
+                lastDistances[pairKey .. "_locked"] = isLocked
                 
                 -- [MERGED] 玩家专属逻辑: 完美追走
                 if i == sim.focusedCar then
@@ -322,13 +336,13 @@ function script.update(dt)
                         local levelPenalty = 1.0 / math.pow(1.5, currentLevel)
                         
                         if dist < CONFIG.distPraise then
-                             -- Perfect Chase (Base: 0.5/s) * Penalty
+                             -- Perfect Chase (Base: 0.2/s -> 5s/Star) * Penalty
                              stats.graceTimer = 0
-                             stats.activeTime = stats.activeTime + (realDt * 0.5 * levelPenalty) 
+                             stats.activeTime = stats.activeTime + (realDt * 0.2 * levelPenalty) 
                         elseif dist < CONFIG.distNormal then
-                             -- Normal Chase (Base: 0.1/s) * Penalty
+                             -- Normal Chase (Base: 0.04/s -> 25s/Star) * Penalty
                              stats.graceTimer = 0
-                             stats.activeTime = stats.activeTime + (realDt * 0.1 * levelPenalty)
+                             stats.activeTime = stats.activeTime + (realDt * 0.04 * levelPenalty)
                         else
                              -- Lost Chase
                              stats.graceTimer = stats.graceTimer + realDt
