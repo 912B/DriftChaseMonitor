@@ -448,7 +448,11 @@ function script.drawUI(dt)
             local dirToCar = (car.position - player.position):normalize()
             local dot = player.look:dot(dirToCar)
             local dist = math.distance(player.position, car.position)
-            if dot > 0.5 and dist < 45.0 then
+            
+            -- [Fix] 增加追走判定: 目标必须在漂移 (速度 > minSpeed 且 角度 > minDriftAngle)
+            local isDrifting = car.speedKmh > CONFIG.minSpeed and getSlipAngle(car) > CONFIG.minDriftAngle
+            
+            if isDrifting and dot > 0.5 and dist < 45.0 then
                if dist < minFrontDist then
                   minFrontDist = dist
                   bestTargetIndex = i
