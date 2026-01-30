@@ -350,9 +350,9 @@ function script.update(dt)
                         end
                     else
                          -- Bad Angle (角度不对)
-                         if dist < CONFIG.distNormal then
-                             -- [New] Range OK but Angle Bad -> PAUSE (Pause Scoring, Keep Combo)
-                             -- 既然距离还在范围内，就只暂停涨分，不立刻断连
+                         if dist < CONFIG.distMock then
+                             -- [New] Range OK (Wide) but Angle Bad -> PAUSE
+                             -- 只要在 20m 内 (可视范围)，角度不对只暂停，不断连
                              stats.graceTimer = 0
                          else
                              -- Range Bad -> DECAY (Lost Chase)
