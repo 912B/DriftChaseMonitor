@@ -6,7 +6,7 @@ local CONFIG = {
   minDriftAngle = 10, -- 最小漂移角度
   minSpeed = 20,      -- 最小速度
   distPraise = 3.0,   -- TIER 3: 贴贴 (赞扬/阴阳)
-  distMock = 10.0,    -- TIER 2: 嘲讽 (中距离)
+  distMock = 20.0,    -- TIER 2: 嘲讽 (中距离)
   distProvoke = 40.0, -- TIER 1: 挑衅 (远距离 - Extended to 40m)
   
   messageLife = 5.0,  -- 消息停留时间
@@ -453,10 +453,12 @@ function script.drawUI(dt)
             local rawDist = math.distance(player.position, car.position)
             local dist = math.max(0, rawDist - 2.0)
             
-            -- [Fix] 增加追走判定: 目标必须在漂移 (速度 > minSpeed 且 角度 > minDriftAngle)
-            local isDrifting = car.speedKmh > CONFIG.minSpeed and getSlipAngle(car) > CONFIG.minDriftAngle
-            
-            if isDrifting and dot > 0.5 and rawDist < 45.0 then -- 筛选范围用原始距离更稳
+            -- [Fix] 双车漂移判定: 玩家和目标都必须在漂移状态
+            local isTargetDrifting = car.speedKmh > CONFIG.minSpeed and getSlipAngle(car) > CONFIG.minDriftAngle
+            local isPlayerDrifting = player.speedKmh > CONFIG.minSpeed and getSlipAngle(player) > CONFIG.minDriftAngle
+
+            -- 只有两人都在漂，且距离合适，且在前方，才视为有效追走目标
+            if isTargetDrifting and isPlayerDrifting and dot > 0.5 and rawDist < 45.0 then -- 筛选范围用原始距离更稳
                if dist < minFrontDist then
                   minFrontDist = dist
                   bestTargetIndex = i
