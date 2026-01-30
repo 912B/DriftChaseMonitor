@@ -204,45 +204,7 @@ local function add3DMessage(carIndex, text, mood)
   }
 end
 
--- [New] 生成 3D 纸屑 (World Space)
-local function spawn3DGlitter(pos, amount)
-  for i = 1, amount do
-    local vel = vec3(math.random()-0.5, math.random()*0.5 + 0.5, math.random()-0.5):normalize() * (2 + math.random()*2)
-    table.insert(particles, {
-      pos = pos + vec3(0, 1, 0), -- 从车顶喷出
-      vel = vel,
-      life = 0.5 + math.random() * 0.5,
-      color = rgbm.new(hsvToRgb(math.random(), 1, 1).rgb, 1)
-    })
-  end
-end
-
--- 主更新逻辑 (Global Loop)
-function script.update(dt)
-  -- [DEBUG] 按住 Ctrl+T 强制测试表情包
-  if ui.keyboardButtonDown(ui.KeyIndex.T) and ui.keyboardButtonDown(ui.KeyIndex.Control) then
-      local car = ac.getCar(0)
-      if not debugTriggered then
-          debugTriggered = true
-          add3DMessage(0, "Testing Bubble!", 3)
-      end
-  else
-      debugTriggered = false
-  end
-
-  -- 2. 更新 3D 粒子
-  for i = #particles, 1, -1 do
-    local p = particles[i]
-    p.life = p.life - dt
-    if p.life <= 0 then
-      table.remove(particles, i)
-    else
-      p.pos:add(p.vel * dt)
-      p.vel.y = p.vel.y - 9.8 * dt * 0.5 -- 3D 重力
-      p.vel:scale(0.95) -- 空气阻力
-      p.color.mult = math.min(1, p.life * 2) 
-    end
-  end
+  -- 2. 更新 3D 粒子 (已移除)
   
   -- 3. 更新 3D 飘字
   for idx, popup in pairs(carPopups) do
@@ -342,9 +304,9 @@ function script.update(dt)
                               if msgTable then add3DMessage(i, getRandomMsg(msgTable), currentTier) end
                            end
                            
-                           -- 粒子 (始终在前车车顶喷出，像是尾流)
-                           local particleAmount = (currentTier == 3) and 40 or ((currentTier == 2) and 20 or 5)
-                           spawn3DGlitter(leader.position, particleAmount)
+                           -- 粒子 (已移除)
+                           -- local particleAmount = (currentTier == 3) and 40 or ((currentTier == 2) and 20 or 5)
+                           -- spawn3DGlitter(leader.position, particleAmount)
                            
                            if i == sim.focusedCar then 
                               -- Removed Combo
@@ -354,8 +316,7 @@ function script.update(dt)
                     
                     -- 持续特效
                     if currentTier >= 2 then
-                        local chance = (currentTier == 3) and 0.7 or 0.9
-                        if math.random() > chance then spawn3DGlitter(leader.position, 1) end
+                        -- 粒子 (已移除)
                     end
                 end
 
@@ -532,15 +493,8 @@ function script.drawUI(dt)
 end
 
 -- 3D 绘制 (仅保留粒子效果)
+-- 3D 绘制 (仅保留文字气泡)
 function script.draw3D(dt)
-  -- 1. 绘制 3D 粒子 (流光)
-  for _, p in ipairs(particles) do
-    local pStart = p.pos
-    local pEnd = p.pos + p.vel * 0.1
-    render.debugLine(pStart, pEnd, p.color)
-  end
-
-  -- 移除所有的 3D 距离显示 (因为已移动到 UI)
   -- 保留 "Car Popups" (文字气泡)
   local sim = ac.getSim()
   local player = ac.getCar(sim.focusedCar)
