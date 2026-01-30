@@ -458,29 +458,74 @@ function script.drawUI(dt)
                   ui.drawRectFilled(barPos, barPos + vec2(fillW, barHeight), barColor, 2)
               end
               
-              -- Timer Text Display
-              if activeTime > 0.1 then
-                   local tStr = ""
-                   local textColor = rgbm(1, 1, 1, 1)
-                   local font = ui.Font.Title
+              -- Star Rating System (Replaces Timer)
+              if activeTime > 0.0 then
+                   local STAR_Count = 5
+                   local TIME_Per_Star = 1.0
+                   local CYCLE_Time = STAR_Count * TIME_Per_Star
                    
-                   if isPerfect then
-                       tStr = string.format("PERFECT CHAIN: %.1fs", activeTime)
-                       textColor = rgbm(1, 0.84, 0, 1) -- Gold
-                       -- Make it pulse brightness slightly
-                       local pulse = 0.8 + 0.2 * math.sin(os.clock() * 10)
-                       textColor.mult = pulse
-                   else
-                       tStr = string.format("%.1fs", activeTime)
-                       textColor = rgbm(0.7, 0.7, 0.7, 0.8) -- Gray
+                   local cycle = math.floor(activeTime / CYCLE_Time)
+                   local localTime = activeTime % CYCLE_Time
+                   local activeStarIndex = math.floor(localTime / TIME_Per_Star) + 1 -- 1 to 5
+                   local activeStarProgress = (localTime % TIME_Per_Star) / TIME_Per_Star
+                   
+                   -- Color Palette
+                   local colors = {
+                       rgbm(0.2, 0.2, 0.2, 0.5), -- Base (Gray)
+                       rgbm(1, 0.84, 0, 1),      -- Lvl 1: Yellow
+                       rgbm(1, 0.2, 0, 1),       -- Lvl 2: Red
+                       rgbm(0.8, 0, 1, 1),       -- Lvl 3: Purple
+                       rgbm(0, 1, 1, 1)          -- Lvl 4: Cyan
+                   }
+                   
+                   local baseCol = colors[math.min(cycle + 1, #colors)]     -- Current Cycle Background
+                   local fillCol = colors[math.min(cycle + 2, #colors)]     -- Filling Color
+                   
+                   -- If max level reached, just flash
+                   if cycle >= (#colors - 2) then
+                       baseCol = colors[#colors]
+                       fillCol = rgbm(1, 1, 1, 1) -- Flash White
                    end
+
+                   ui.pushFont(ui.Font.Title) -- Large stars
+                   local starStr = "★"
+                   local starSize = ui.measureText(starStr)
+                   local spacing = 5
+                   local totalWidth = (starSize.x + spacing) * STAR_Count
+                   local startX = barPos.x + (barWidth - totalWidth) / 2
+                   local startY = barPos.y - 45 -- Above bar
                    
-                   ui.pushFont(font)
-                   local sz = ui.measureText(tStr)
-                   
-                   -- Draw centered above bar
-                   ui.setCursor(barPos + vec2(barWidth/2 - sz.x/2, -35))
-                   ui.textColored(tStr, textColor)
+                   for s = 1, STAR_Count do
+                       local sPos = vec2(startX + (s-1) * (starSize.x + spacing), startY)
+                       local col = baseCol
+                       local scale = 1.0
+                       
+                       if s < activeStarIndex then
+                           -- Already filled
+                           col = fillCol
+                       elseif s == activeStarIndex then
+                           -- Currently filling (Pulse size + Lerp Color)
+                           local t = activeStarProgress
+                           -- Lerp color
+                           col = vec4(
+                               baseCol.r + (fillCol.r - baseCol.r) * t,
+                               baseCol.g + (fillCol.g - baseCol.g) * t,
+                               baseCol.b + (fillCol.b - baseCol.b) * t,
+                               1 -- Alpha always 1 for active
+                           )
+                           -- Pulse size
+                           scale = 1.0 + 0.3 * math.sin(t * 3.14)
+                       else
+                           -- Not yet reached
+                           col = baseCol
+                       end
+                       
+                       ui.setCursor(sPos)
+                       -- Optional: Scale adjustment needs offset correction, simplified for now
+                       -- Text scale via window font scale is global, tricky. 
+                       -- Just use color lerp for smoothness.
+                       ui.textColored(starStr, col)
+                   end
                    ui.popFont()
               end
               
