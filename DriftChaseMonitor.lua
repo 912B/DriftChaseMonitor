@@ -483,13 +483,14 @@ function script.drawUI(dt)
                    local activeStarIndex = math.floor(localTime / TIME_Per_Star) + 1 -- 1 to 5
                    local activeStarProgress = (localTime % TIME_Per_Star) / TIME_Per_Star
                    
-                   -- Color Palette
+                   -- Color Palette (Updated: White -> Blue -> Green -> Gold -> Purple)
                    local colors = {
                        rgbm(0.2, 0.2, 0.2, 0.5), -- Base (Gray)
-                       rgbm(1, 0.84, 0, 1),      -- Lvl 1: Yellow
-                       rgbm(1, 0.2, 0, 1),       -- Lvl 2: Red
-                       rgbm(0.8, 0, 1, 1),       -- Lvl 3: Purple
-                       rgbm(0, 1, 1, 1)          -- Lvl 4: Cyan
+                       rgbm(1, 1, 1, 1),         -- Lvl 1: White
+                       rgbm(0, 0.6, 1, 1),       -- Lvl 2: Blue
+                       rgbm(0, 1, 0, 1),         -- Lvl 3: Green
+                       rgbm(1, 0.84, 0, 1),      -- Lvl 4: Gold
+                       rgbm(0.8, 0, 1, 1)        -- Lvl 5: Purple
                    }
                    
                    local baseCol = colors[math.min(cycle + 1, #colors)]     -- Current Cycle Background
