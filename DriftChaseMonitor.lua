@@ -401,7 +401,10 @@ function script.update(dt)
                     -- 但需要额外的 dot check 确保在我们前方 (UI 显示用)
                     local playerLookDot = player.look:dot( (leader.position - chaser.position):normalize() )
                     
-                    if isChaserDrifting and isLeaderDrifting and playerLookDot > 0.5 and rawDist < 45.0 then
+                    -- [Fix] 放宽视野判定 (View Cone)
+                    -- 原来的 > 0.5 (60度) 太严苛，大角度漂移时车头没对准前车会导致 UI 丢失
+                    -- 改为 > -0.2 (约 100度)，支持 Reverse Entry
+                    if isChaserDrifting and isLeaderDrifting and playerLookDot > -0.2 and rawDist < 45.0 then
                         -- [Fix] 目标锁定粘滞 (Hysteresis)
                         -- 为了防止目标乱跳，现在的目标会有 3.0m 的"虚拟距离优势"
                         -- 也就是说，新目标必须比当前目标近 3.0m 以上才能抢走焦点
