@@ -200,6 +200,7 @@ local function add3DMessage(carIndex, text, mood)
   if mood == 2 then col = rgbm(1, 0.8, 0, 1) -- Gold
   elseif mood == 1 then col = rgbm(0, 1, 1, 1) -- Cyan
   elseif mood == 3 then col = rgbm(1, 0.2, 0.2, 1) -- Red
+  elseif mood == 4 then col = rgbm(0, 1, 0, 1)   -- Green (Chat)
   end
   
   carPopups[carIndex] = {
@@ -693,3 +694,13 @@ function script.draw3D(dt)
     end
   end
 end
+
+-- [New] 聊天消息接入 (Chat Integration)
+ac.onChatMessage(function(msg, senderIndex)
+    -- 过滤掉自己发的消息(可选, 这里都显示)
+    -- 注意: senderIndex 是 carIndex
+    if senderIndex and senderIndex >= 0 and senderIndex < ac.getSim().carsCount then
+        -- Mood 4 = Green (Chat)
+        add3DMessage(senderIndex, msg, 4)
+    end
+end)
