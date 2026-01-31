@@ -23,7 +23,7 @@ local CONFIG = {
   
   driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
 
-  enableFaces = false -- [New] 是否启用表情包 (SDK Mode Safe)
+  driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
 }
 
 -- [New] 弹幕配置 (Danmaku Config)
@@ -43,82 +43,7 @@ local lastMessageTime = {} -- [New] 记录上一次消息触发时间 {pairKey -
 local perfectChaseStats = {} -- [New] 完美追走统计 {activeTime, graceTimer}
 local driftTimers = {} -- [New] 漂移断开计时器 (Grace Logic)
 
--- 辅助: 简单哈希函数
-local function stringHash(str)
-    local h = 5381
-    for i = 1, #str do
-        h = (h * 33 + string.byte(str, i)) % 4294967296
-    end
-    return h
-end
-
--- 资源配置
-local ZIP_URL = "https://hub.rotown.cn/scripts/Images.zip"
-
--- 图片路径配置 (动态加载)
-local FACES_CONFIG = {
-    A = nil,
-    B = nil,
-    C = nil
-}
-local ASSETS_READY = false
-
--- 使用 SDK 内置的 loadRemoteAssets 安全加载资源
-if CONFIG.enableFaces then
-    web.loadRemoteAssets(ZIP_URL, function(err, folder)
-        if err then
-            ac.log("DriftChaseMonitor: Failed to load assets: " .. tostring(err))
-            return
-        end
-        
-        -- folder 是资源解压后的临时目录
-        ac.log("DriftChaseMonitor: Assets loaded at " .. folder)
-        
-        -- Images.zip structure: Images/A.png
-        -- We assume the zip structure is maintained.
-        -- Manual check: folder .. "/Images/A.png"
-        local imgDir = folder .. "/Images"
-        
-        FACES_CONFIG.A = imgDir .. "/A.png"
-        FACES_CONFIG.B = imgDir .. "/B.png"
-        FACES_CONFIG.C = imgDir .. "/C.png"
-        ASSETS_READY = true
-    end)
-end
-
--- 纹理管理器 (Canvas 代理版)
-local TextureManager = {
-    cache = {}, 
-    failedPaths = {} 
-}
-
-function TextureManager:get(path)
-    if not path then return nil end
-    if self.failedPaths[path] then return nil end -- 如果已知失败，直接返回 nil
-    
-    -- 1. 验证图片尺寸
-    local size = ui.imageSize(path)
-    if size.x <= 0 then
-        -- 尝试 Windows 路径格式
-        local winPath = path:gsub("/", "\\")
-        size = ui.imageSize(winPath)
-        
-        if size.x <= 0 then
-            -- 仅记录一次错误
-            if not self.failedPaths[path] then
-                ac.log("Invalid image size (Load failed): " .. path)
-                self.failedPaths[path] = true
-            end
-            return nil 
-        end
-        path = winPath
-    end
-    
-    -- 2. 直接返回路径 (ui.drawImage 支持路径)
-    return path
-end
-
-local lastDistances = {}
+-- (Face Assets Removed)
 local chaseTimers = {} 
 
 -- 工具：HSV 转 RGB
@@ -492,59 +417,14 @@ end
 
 -- 2D UI 绘制 (包含 Face 表情包 和 距离进度条)
 function script.drawUI(dt)
-  if not CONFIG.enableFaces then return end
-
+  -- 2D UI 绘制 (仅保留距离进度条)
   local uiState = ac.getUI()
   local windowSize = uiState.windowSize
   
-  -- [NEW] 绘制表情包 (2D Overlay)
-  ui.beginTransparentWindow("FaceOverlay", vec2(0,0), windowSize)
+  ui.beginTransparentWindow("DriftOverlay", vec2(0,0), windowSize)
   
   local sim = ac.getSim()
   local player = ac.getCar(sim.focusedCar)
-  
-  -- [Reverted] 3D Text in UI (Caused Red Squares) -> Moved back to debugText logic which works for CJK
-
-  -- 1. 表情包逻辑 (Face Logic) -- 独立逻辑，保留遍历
-  if player then
-      for i = 0, sim.carsCount - 1 do
-           local car = ac.getCar(i)
-           if car and car.isConnected and i ~= sim.focusedCar then
-               local dist = math.distance(car.position, player.position)
-               if dist < 60 then
-                   local faceUrl = FACES_CONFIG.A
-                   if dist < 5.0 then faceUrl = FACES_CONFIG.C
-                   elseif dist < 15.0 then faceUrl = FACES_CONFIG.B
-                   end
-                   
-                   local headPos = car.position + vec3(0, 2.5, 0) 
-                   local proj = render.projectPoint(headPos)
-                   
-                   if proj.x > -0.2 and proj.x < 1.2 and proj.y > -0.2 and proj.y < 1.2 then
-                        local screenPos = vec2(proj.x * windowSize.x, proj.y * windowSize.y)
-                        local scale = math.clamp(40 / math.max(1, dist), 0.5, 3.0) 
-                        local baseSize = 45 
-                        local sizePx = baseSize * scale
-                        sizePx = math.clamp(sizePx, 25, 180) 
-                        local size2D = vec2(sizePx, sizePx)
-                        local pos2D = screenPos - size2D * 0.5
-                        
-                        local facePath = TextureManager:get(faceUrl)
-                        if facePath then
-                             local distAlpha = math.clamp(1 - (dist - 40)/20, 0, 1)
-                             if distAlpha > 0.05 then
-                                 local col = rgbm(1,1,1, distAlpha)
-                                 ui.drawImage(facePath, pos2D, pos2D + size2D, col)
-                                 local center = pos2D + size2D * 0.5
-                                 local radius = sizePx * 0.6 
-                                 ui.drawCircle(center, radius, col, 2.0)
-                             end
-                        end
-                   end
-               end
-           end
-      end
-  end
   
   -- 2. 距离进度条逻辑 (使用 update 计算好的 activeTarget)
   if activeTarget.index ~= -1 and player then
