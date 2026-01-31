@@ -22,6 +22,7 @@ local CONFIG = {
   messageCooldown = 15.0, -- [New] 消息冷却时间 (秒) - 防止刷屏
   
   driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
+}
 
 
 
