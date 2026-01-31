@@ -884,13 +884,13 @@ ac.onChatMessage(function(msg, senderName, carIndex)
     
     addDanmaku(displayText, danmakuColor)
 
-    -- 4. 维持原本的 3D 气泡逻辑 (仅当车在附近时有效)
-    if carIndex and carIndex >= 0 and carIndex < ac.getSim().carsCount then
-        -- [Fix] Smart Dedup
-        local existing = carPopups[carIndex]
-        if existing and existing.text == msg and existing.age < 1.0 then
-            return 
-        end
-        add3DMessage(carIndex, msg, 4)
-    end
+    -- 4. [Disabled] 车顶不再显示聊天内容
+    -- if carIndex and carIndex >= 0 and carIndex < ac.getSim().carsCount then
+    --     -- [Fix] Smart Dedup
+    --     local existing = carPopups[carIndex]
+    --     if existing and existing.text == msg and existing.age < 1.0 then
+    --         return 
+    --     end
+    --     add3DMessage(carIndex, msg, 4)
+    -- end
 end)
