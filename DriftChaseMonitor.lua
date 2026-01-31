@@ -24,8 +24,6 @@ local CONFIG = {
   driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
 
   driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
-  
-  debugSpeed = false,   -- [Debug] 开启 50x 涨星速度 (方便测试) - Release时请改为 false
 }
 
 -- [New] 弹幕配置 (Danmaku Config) - Adjusted for 3D World Space (Appears as HUD)
@@ -489,17 +487,14 @@ function script.update(dt)
                         local currentLevel = math.floor(stats.activeTime / 5)
                         local levelPenalty = 1.0 / math.pow(2.5, currentLevel)
                         
-                        -- [Debug] Speed Multiplier
-                        local debugMult = CONFIG.debugSpeed and 50.0 or 1.0
-                        
                         if dist < CONFIG.distPraise then
                              -- Perfect Chase (Base: 0.2/s -> 5s/Star) * Penalty
                              stats.graceTimer = 0
-                             stats.activeTime = stats.activeTime + (realDt * 0.2 * levelPenalty * debugMult) 
+                             stats.activeTime = stats.activeTime + (realDt * 0.2 * levelPenalty) 
                         elseif dist < CONFIG.distNormal then
                              -- Normal Chase (Base: 0.04/s -> 25s/Star) * Penalty
                              stats.graceTimer = 0
-                             stats.activeTime = stats.activeTime + (realDt * 0.04 * levelPenalty * debugMult)
+                             stats.activeTime = stats.activeTime + (realDt * 0.04 * levelPenalty)
                         else
                              -- Lost Chase
                              stats.graceTimer = stats.graceTimer + realDt
