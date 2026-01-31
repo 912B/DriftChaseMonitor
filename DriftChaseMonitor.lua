@@ -323,6 +323,16 @@ local function reportScore(scoreTime, realTime, leaderIndex)
    local CYCLE_Time = 5.0
    local cycle = math.floor(scoreTime / CYCLE_Time)
    local totalStars = math.floor(scoreTime / 1.0)
+   local cycleStars = totalStars % 5 -- [Fixed] Limit to 0-4 stars per color (user requested 5 stars per color)
+   if cycleStars == 0 and totalStars > 0 then cycleStars = 5 end -- Optional: Prefer "5 stars" over "0 stars" at level cap? 
+   -- User said "Only 5 stars". Let's use 0-4 or 1-5?
+   -- If 4.9s -> 4 stars. 5.0s -> Blue 0? Or Blue 5?
+   -- Let's stick to 0-4, but if it is exactly multiple, it usually means "Full Previous" or "Empty Current".
+   -- Let's use simple modulo for now: 8s = 3 stars. 5s = 0 stars. 
+   -- Wait, 0 stars looks bad. Let's try: if % 5 == 0, show 5? 
+   -- No, that messes up the tier. 
+   -- Let's just use `cycleStars` as is (0-4). 0 means "Just Upgraded".
+   cycleStars = math.floor(scoreTime % 5)
    
    -- Colors: White -> Blue -> Green -> Gold -> Purple
    local colorNames = { "White", "Blue", "Green", "Gold", "Purple" }
@@ -341,7 +351,7 @@ local function reportScore(scoreTime, realTime, leaderIndex)
    -- Build Message
    -- [Refined] Only show Score Time (积分总时长)
    -- [Refined] Only show Score Time (积分总时长)
-   local msg = string.format("追走结算: %s色 %d 星 (积分:%.1fs) | %s", displayColor, totalStars, scoreTime, comment)
+   local msg = string.format("追走结算: %s色 %d 星 (积分:%.1fs) | %s", displayColor, cycleStars, scoreTime, comment)
    ac.sendChatMessage(msg)
    
    -- [New] Display Result on Leader's Roof (Overhead)
@@ -355,7 +365,7 @@ local function reportScore(scoreTime, realTime, leaderIndex)
        end
        
        -- Short format for overhead: "🏆 5 Stars (Purple) | Nice!"
-       local shortMsg = string.format("🏆 %d 星 (%s) | %s", totalStars, displayColor, comment)
+       local shortMsg = string.format("🏆 %d 星 (%s) | %s", cycleStars, displayColor, comment)
        addOverheadMessage(leaderIndex, shortMsg, col)
    end
 end
@@ -557,6 +567,9 @@ function script.update(dt)
                 -- [MERGED] 玩家专属逻辑: 完美追走
                 if i == sim.focusedCar then
                     local stats = perfectChaseStats[pairKey] or { activeTime = 0, realTime = 0, graceTimer = 0 }
+                    -- [Fix] Reset display flag each frame so it doesn't stick
+                    stats.isDisplayed = false
+                    
                     if isAngleGood then
                         -- Calculate Score using Helper
                         local gain = calculateScoreGain(stats.activeTime, dist, realDt)
@@ -635,8 +648,7 @@ function script.update(dt)
                                 stats = stats,
                                 isLocked = isLocked
                             }
-                            -- [Fix] Mark as displayed so we only report THIS one
-                            stats.isDisplayed = true
+                            -- [Removed] Don't set here, only set FINAL winner
                         end
                     end
                 end
@@ -644,6 +656,11 @@ function script.update(dt)
          end
        end
     end
+  end
+  
+  -- [Fix] Finalize UI Target Flag
+  if frameBestTarget then
+      frameBestTarget.stats.isDisplayed = true
   end
   
   -- [Fix] Cleanup Stale Stats (Frozen Chase Bug)
