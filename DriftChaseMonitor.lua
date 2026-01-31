@@ -33,8 +33,8 @@ local DANMAKU_CONFIG = {
     width = 12.0,     -- Virtual screen width (Meters) at depth
     height = 6.0,     -- Virtual screen height (Meters)
     
-    speed = 1.8,      -- Meters per second (Slower for readability)
-    life = 10.0,      -- Failsafe
+    speed = 0.9,      -- Meters per second (Even slower - 2x reduction)
+    life = 20.0,      -- Extended life for slower speed (Needs ~14s to cross)
     
     fontSize = 2.5,   -- Scale Factor for render.debugText (2.0 - 3.0 is large)
     lineHeight = 1.2, -- Vertical spacing in meters 
