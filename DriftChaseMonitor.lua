@@ -239,6 +239,34 @@ local activeTarget = {
     stats = nil
 }
 
+-- [New] Report Score Helper
+local function reportScore(time)
+   if time < 1.0 then return end
+   
+   -- Security Check: 
+   -- 1. Spectator: Don't send chat if I am just watching.
+   -- 2. Replay: Don't send chat in replay.
+   local sim = ac.getSim()
+   if sim.focusedCar ~= sim.carIndex then return end 
+   -- Note: CSP Lua `isReplay` check might be needed if sim.isReplay exists, usually safe enough with focusedCar check in online, 
+   -- but let's be safe.
+   if sim.isReplay then return end
+
+   -- Calc Logic (Sync with Draw)
+   local CYCLE_Time = 5.0
+   local cycle = math.floor(time / CYCLE_Time)
+   local totalStars = math.floor(time / 1.0)
+   
+   -- Colors: White -> Blue -> Green -> Gold -> Purple
+   local colorNames = { "White", "Blue", "Green", "Gold", "Purple" }
+   local colorIdx = math.clamp(cycle + 1, 1, #colorNames)
+   local colorName = colorNames[colorIdx]
+   
+   -- Build Message
+   local msg = string.format("追走结算: %s色 %d 星 (%.1fs)", colorName, totalStars, time)
+   ac.sendChatMessage(msg)
+end
+
 -- 主更新逻辑 (Global Loop)
 function script.update(dt)
   local realDt = ac.getDeltaT() -- [Fix] Define realDt for global use
@@ -406,6 +434,7 @@ function script.update(dt)
                     local angleDiff = math.abs(chaserSlip - leaderSlip)
                     local isAngleGood = angleDiff < CONFIG.maxAngleDiff
 
+
                     if isAngleGood then
                         -- [New] 几何难度递增 (Geometric Difficulty)
                         -- 随着等级提升 (颜色变化)，涨星速度几何级下降
@@ -424,7 +453,10 @@ function script.update(dt)
                         else
                              -- Lost Chase
                              stats.graceTimer = stats.graceTimer + realDt
-                             if stats.graceTimer > 1.0 then stats.activeTime = 0 end
+                             if stats.graceTimer > 1.0 then 
+                                 reportScore(stats.activeTime) -- [New] Report
+                                 stats.activeTime = 0 
+                             end
                         end
                     else
                          -- Bad Angle (角度不对)
@@ -435,7 +467,10 @@ function script.update(dt)
                          else
                              -- Range Bad -> DECAY (Lost Chase)
                              stats.graceTimer = stats.graceTimer + realDt
-                             if stats.graceTimer > 1.0 then stats.activeTime = 0 end
+                             if stats.graceTimer > 1.0 then 
+                                 reportScore(stats.activeTime) -- [New] Report
+                                 stats.activeTime = 0 
+                             end
                          end
                     end
                     perfectChaseStats[pairKey] = stats
