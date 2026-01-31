@@ -447,12 +447,14 @@ function script.update(dt)
                 local leaderSpeed = leader.velocity:length() * 3.6
                 local isMovingFastEnough = (chaserSpeed > CONFIG.minSpeed) and (leaderSpeed > CONFIG.minSpeed)
                 
+                -- [Fix] Calculate Angle Info HERE so it is available for both blocks
+                local leaderSlip = getSlipAngle(leader)
+                local angleDiff = math.abs(chaserSlip - leaderSlip)
+                local isAngleGood = angleDiff < CONFIG.maxAngleDiff
+                
                 if isChaserDrifting and isLeaderDrifting and isBehind and isMovingFastEnough then
                        -- [New] 角度一致性检查
                        -- 必须动作同步才能得分 (防止瞎蹭)
-                       local leaderSlip = getSlipAngle(leader)
-                       local angleDiff = math.abs(chaserSlip - leaderSlip)
-                       local isAngleGood = angleDiff < CONFIG.maxAngleDiff
                        
                        -- 基础得分为 0
                        local scoreGain = 0
