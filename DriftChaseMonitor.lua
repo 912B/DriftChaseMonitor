@@ -731,9 +731,9 @@ local DANMAKU_POOL = {}
 local DANMAKU_CONFIG = {
     speed = 200,      -- Pixels per second
     life = 10.0,      -- Max life (failsafe)
-    fontSize = 150,   -- Font size (Increased to 150)
-    lineHeight = 160, -- Height per line slot
-    maxLines = 10,    -- Max concurrent lines (top of screen)
+    fontSize = 60,    -- Font size (Direct pixel size for render.text)
+    lineHeight = 70,  -- Height per line slot 
+    maxLines = 10,    -- Max concurrent lines
     opacity = 1.0,    -- Opacity
 }
 
@@ -747,30 +747,23 @@ local function addDanmaku(text, color)
     -- Jitter speed (150 - 250 px/s)
     local speed = DANMAKU_CONFIG.speed + math.random(-50, 50)
     
+    -- Estimate width (render.measureText unavailable in logic thread sometimes, use approx)
+    -- We'll update exact width in draw loop if needed, or just use length * factor
+    local estimatedWidth = #text * (DANMAKU_CONFIG.fontSize * 0.5)
+
     table.insert(DANMAKU_POOL, {
         text = text,
         x = windowWidth, -- Start from right edge
         y = 50 + (lineIdx * DANMAKU_CONFIG.lineHeight), -- Top offset
         speed = speed,
         color = color or rgbm(1, 1, 1, 1),
-        width = ui.measureText(text).x * (DANMAKU_CONFIG.fontSize / 30) -- Est width
+        width = estimatedWidth 
     })
 end
 
 local function updateAndDrawDanmaku(dt)
-    -- [Fix] Fallback if dt is nil (UI callback sometimes missing args)
+    -- [Fix] Fallback if dt is nil
     dt = dt or ac.getDeltaT()
-    
-    local uiState = ac.getUI()
-    ui.beginTransparentWindow("DanmakuLayer", vec2(0,0), uiState.windowSize)
-    
-    -- [Fix] Apply Font Scale (Base Title font is ~25-30px, so we scale relative to that)
-    local scale = DANMAKU_CONFIG.fontSize / 15 -- Adjusted for Main font (smaller base)
-    if ui.setWindowFontScale then ui.setWindowFontScale(scale) end
-    
-    -- [Fix] Use ui.Font.Main for better CJK (Chinese) support
-    -- Title font often lacks Chinese glyphs
-    ui.pushFont(ui.Font.Main)
     
     for i = #DANMAKU_POOL, 1, -1 do
         local item = DANMAKU_POOL[i]
@@ -778,34 +771,49 @@ local function updateAndDrawDanmaku(dt)
         -- Update Pos
         item.x = item.x - item.speed * dt
         
-        -- Draw (Simple Text with Shadow for visibility)
+        -- Draw using render.text (Direct Game Engine Rendering)
+        -- render.text(pos: vec2, text: string, color: rgbm, size: float)
         local pos = vec2(item.x, item.y)
         local shadowPos = pos + vec2(2, 2)
         
-        -- Draw Shadow (Black)
-        ui.setCursor(shadowPos)
-        ui.textColored(item.text, rgbm(0, 0, 0, 0.8 * DANMAKU_CONFIG.opacity))
+        -- Draw Shadow
+        render.text(shadowPos, item.text, rgbm(0, 0, 0, 0.8 * DANMAKU_CONFIG.opacity), DANMAKU_CONFIG.fontSize)
         
-        -- Draw Text (White/Color)
-        ui.setCursor(pos)
-        ui.textColored(item.text, item.color)
+        -- Draw Text
+        render.text(pos, item.text, item.color, DANMAKU_CONFIG.fontSize)
         
-        -- Cleanup if off-screen (Left side)
-        -- item.x + item.width < 0 means fully off-screen
-        if item.x < -item.width - 50 then
+        -- Cleanup (Simplified off-screen check)
+        if item.x < -1000 then -- Safe margin
             table.remove(DANMAKU_POOL, i)
         end
     end
-    
-    ui.popFont()
-    ui.endTransparentWindow()
 end
 
--- Hook into drawUI
+-- Hook into draw3D (Overlay) instead of drawUI
+-- We assume draw3D is called every frame for transparent rendering
+local _original_draw3D = script.draw3D
+script.draw3D = function(dt)
+    if _original_draw3D then _original_draw3D(dt) end
+    updateAndDrawDanmaku(dt)
+end
+
+-- Disable UI hook (Remove previous hook logic manually or effectively overwrite)
 local _original_drawUI = script.drawUI
 script.drawUI = function(dt)
+    -- Only call original UI, no Danmaku here
+    -- (We rely on _original_drawUI being the BASE function or previous hook)
+    -- Ideally we should check if we wrapped it before. 
+    -- Since we are replacing the global script.drawUI, we just call the original logic.
+    -- To verify: check lines 480-650 in original file which define drawUI.
+    -- Wait, if _original_drawUI points to the PREVIOUS wrapped function (with danmaku), we might recurse or duplicate?
+    -- No, this replace_file_content replaces the BLOCK where the hook was defined.
+    -- So this new block defines the hooks fresh.
+    -- Checking the original code structure:
+    -- The original code defines `function script.drawUI(dt)` at line 481.
+    -- The previous edit added a hook at line 772.
+    -- We are replacing line 727 to 779.
+    -- So `_original_drawUI` will capture `script.drawUI` which IS the main UI function (line 481).
     if _original_drawUI then _original_drawUI(dt) end
-    updateAndDrawDanmaku(dt)
 end
 -- ==============================================================
 
