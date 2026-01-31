@@ -250,9 +250,12 @@ local function reportScore(time)
    -- 1. Spectator: Don't send chat if I am just watching.
    -- 2. Replay: Don't send chat in replay.
    local sim = ac.getSim()
-   if sim.focusedCar ~= sim.carIndex then return end 
-   -- Note: CSP Lua `isReplay` check might be needed if sim.isReplay exists, usually safe enough with focusedCar check in online, 
-   -- but let's be safe.
+   local focusCar = ac.getCar(sim.focusedCar)
+   
+   -- [Fix] carIndex might be missing. Use isRemote (true for network cars) to detect spectator mode.
+   -- If car is remote, it's not us -> return.
+   if not focusCar or focusCar.isRemote then return end 
+   
    if sim.isReplay then return end
 
    -- Calc Logic (Sync with Draw)
