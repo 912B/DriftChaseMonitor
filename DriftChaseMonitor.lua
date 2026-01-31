@@ -113,7 +113,7 @@ local function addOverheadMessage(carIndex, text, color)
         text = text,
         color = color,
         age = 0,
-        duration = 4.0
+        duration = CONFIG.messageLife
     }
 end
 
