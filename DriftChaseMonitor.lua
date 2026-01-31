@@ -191,7 +191,7 @@ local function getRandomMsg(pool)
   return pool[math.random(#pool)]
 end
 
--- [New] 添加 3D 飘字 (绑定到车辆 ID)
+-- [New] 添加 3D 飘字 -> 改为发送到 3D 弹幕 (Redirect to Danmaku)
 local function add3DMessage(carIndex, text, mood)
   local col = rgbm(1, 1, 1, 1)
   if mood == 2 then col = rgbm(1, 0.8, 0, 1) -- Gold
@@ -200,12 +200,11 @@ local function add3DMessage(carIndex, text, mood)
   elseif mood == 4 then col = rgbm(0, 1, 0, 1)   -- Green (Chat)
   end
   
-  carPopups[carIndex] = {
-    text = text,
-    age = 0,
-    color = col,
-    offset = vec3(0, 0, 0)
-  }
+  -- Append Driver Name if possible
+  local car = ac.getCar(carIndex)
+  local name = car and car.driverName or ("Car " .. carIndex)
+  
+  addDanmaku(name .. ": " .. text, col)
 end
 
 -- 活跃的追踪目标 (用于 UI 显示)
@@ -220,13 +219,8 @@ function script.update(dt)
   local realDt = ac.getDeltaT() -- [Fix] Define realDt for global use
   -- 2. 更新 3D 粒子 (已移除)
   
-  -- 3. 更新 3D 飘字
-  for idx, popup in pairs(carPopups) do
-    popup.age = popup.age + dt
-    if popup.age > CONFIG.messageLife then
-      carPopups[idx] = nil
-    end
-  end
+  -- 3. 更新 3D 飘字 (已重定向到弹幕，此处移除)
+
 
   -- 4. 全局漂移追走检测 (N * N)
   local sim = ac.getSim()
@@ -601,77 +595,8 @@ function script.drawUI(dt)
   ui.endTransparentWindow()
 end
 
--- 3D 绘制 (仅保留文字气泡 - 带性能限制)
+-- 3D 绘制 (仅保留 Danmaku HUD)
 function script.draw3D(dt)
-  -- 保留 "Car Popups" (文字气泡)
-  local sim = ac.getSim()
-  local player = ac.getCar(sim.focusedCar)
-  if not player then return end
-
-  -- [Optimization] Render Budget
-  -- 收集所有需要渲染的 candidates
-  local candidates = {} 
-  
-  for i = 0, sim.carsCount - 1 do
-    local popup = carPopups[i]
-    if popup then
-       local car = ac.getCar(i)
-       if car then
-         local dist = math.distance(player.position, car.position)
-         -- Distance Culling (Far)
-         if dist < 60 then
-             table.insert(candidates, {
-                 idx = i,
-                 dist = dist,
-                 car = car,
-                 popup = popup
-             })
-         end
-       end
-    end
-  end
-  
-  -- 按距离排序 (最近的优先)
-  table.sort(candidates, function(a,b) return a.dist < b.dist end)
-  
-  -- 只渲染最近的 10 个 (防止 lag)
-  local renderLimit = 10
-  for k, item in ipairs(candidates) do
-      if k > renderLimit then break end
-      
-      local popup = item.popup
-      local car = item.car
-      local dist = item.dist
-      
-      local distAlpha = math.clamp(1 - (dist - 40)/20, 0, 1)
-      if distAlpha > 0.05 then
-            local alpha = math.min(1, CONFIG.messageLife - popup.age)
-            if alpha > 0.05 then
-                 -- Animation
-                 local riseDuration = 2.0
-                 local t_rise = math.min(1, popup.age / riseDuration) 
-                 local currentHeight = 2.2 * t_rise
-                 
-                 -- Pop
-                 local t_pop = math.min(1, popup.age * 2.0)
-                 local popScale = 1 + 2.7 * math.pow(t_pop - 1, 3) + 1.7 * math.pow(t_pop - 1, 2)
-                 if t_pop>=1 then popScale = 1 end
-                 
-                 -- Pos (Result: starts at 2.0m, goes up to 4.2m)
-                 local textBasePos = car.position + vec3(0, 2.0, 0)
-                 local currentDist = 2.0 * t_rise
-                 local bubblePos = textBasePos + car.look * currentDist + vec3(0, currentHeight, 0)
-                 
-                 -- Render
-                 local finalAlpha = alpha * distAlpha
-                 local col = popup.color:clone()
-                 col.mult = finalAlpha
-                 render.debugText(bubblePos, popup.text, col, 3.0 * popScale)
-            end
-      end
-  end
-
-  
   -- [New] 3D Danmaku (HUD)
   updateAndDrawDanmaku(dt)
 end
