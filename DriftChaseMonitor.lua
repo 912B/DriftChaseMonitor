@@ -746,6 +746,12 @@ ac.onChatMessage(function(msg, senderName, carIndex)
         carIndex = senderName
         senderName = nil
     end
+    
+    -- [Fix] Ignore System Messages (Index -1) and Empty Messages
+    -- Note: Don't block 'nil' carIndex because we might search by senderName below.
+    if (carIndex and carIndex < 0) or (not msg or msg == "") or (not carIndex and not senderName) then 
+        return 
+    end
 
     -- 情况 B: carIndex 依然为空，尝试用 senderName 字符串反查 (如果 senderName 是名字)
     local senderCar = nil
