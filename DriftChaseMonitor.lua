@@ -809,13 +809,14 @@ end
 
 -- [New] 聊天消息接入 (Chat Integration)
 ac.onChatMessage(function(msg, senderName, carIndex)
-    -- 1. 自动修正参数 (Handle dynamic arguments)
-    if type(senderName) == "number" and carIndex == nil then
+    -- 1. 参数归一化 (Normalize Arguments)
+    -- 情况 A: (msg, carIndex) -> senderName 是 index, carIndex 是 nil
+    if type(senderName) == "number" then
         carIndex = senderName
         senderName = nil
     end
 
-    -- 2. 名字查找 Fallback
+    -- 情况 B: carIndex 依然为空，尝试用 senderName 字符串反查 (如果 senderName 是名字)
     local senderCar = nil
     if (not carIndex or carIndex == -1) and type(senderName) == "string" then
         local sim = ac.getSim()
@@ -823,34 +824,39 @@ ac.onChatMessage(function(msg, senderName, carIndex)
             local c = ac.getCar(i)
             if c and c.driverName == senderName then
                 carIndex = i
-                senderCar = c
                 break
             end
         end
     end
+
+    -- 2. 获取车辆对象 (Get Car Object)
+    if carIndex and carIndex >= 0 then
+        senderCar = ac.getCar(carIndex)
+    end
     
     -- Debug Log
-    ac.log("DriftChaseChat: Msg="..tostring(msg).." Sender="..tostring(senderName))
+    ac.log("DriftChaseChat: Msg="..tostring(msg).." Sender="..tostring(senderName).." Index="..tostring(carIndex))
 
     -- [New] 触发全屏弹幕 (Global Danmaku)
-    -- 任何消息都显示为弹幕，不管在不在视野内
-    -- 如果是自己发的，显示为黄色
     local isSelf = (carIndex == ac.getSim().focusedCar)
     local danmakuColor = isSelf and rgbm(1, 0.8, 0, 1) or rgbm(1, 1, 1, 1)
     
-    -- Format: "Name: Msg"
+    -- 3. 构造显示名称 (Priority: Car.driverName > senderName > "Unknown")
+    local finalName = senderName
+    if senderCar and senderCar.driverName then
+        finalName = senderCar.driverName
+    end
+    
     local displayText = msg
-    if senderName then 
-        displayText = senderName .. ": " .. msg 
-    elseif senderCar then
-        displayText = senderCar.driverName .. ": " .. msg
+    if finalName then 
+        displayText = finalName .. ": " .. msg 
     end
     
     addDanmaku(displayText, danmakuColor)
 
-    -- 3. 维持原本的 3D 气泡逻辑 (仅当车在附近时有效)
+    -- 4. 维持原本的 3D 气泡逻辑 (仅当车在附近时有效)
     if carIndex and carIndex >= 0 and carIndex < ac.getSim().carsCount then
-        -- [Fix] Smart Dedup (防止重复渲染)
+        -- [Fix] Smart Dedup
         local existing = carPopups[carIndex]
         if existing and existing.text == msg and existing.age < 1.0 then
             return 
