@@ -23,7 +23,7 @@ local CONFIG = {
   
   driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
 
-  enableFaces = true -- [New] 是否启用表情包 (SDK Mode Safe)
+  enableFaces = false -- [New] 是否启用表情包 (SDK Mode Safe)
 }
 
 -- 状态变量
@@ -53,25 +53,27 @@ local FACES_CONFIG = {
 local ASSETS_READY = false
 
 -- 使用 SDK 内置的 loadRemoteAssets 安全加载资源
-web.loadRemoteAssets(ZIP_URL, function(err, folder)
-    if err then
-        ac.log("DriftChaseMonitor: Failed to load assets: " .. tostring(err))
-        return
-    end
-    
-    -- folder 是资源解压后的临时目录
-    ac.log("DriftChaseMonitor: Assets loaded at " .. folder)
-    
-    -- Images.zip structure: Images/A.png
-    -- We assume the zip structure is maintained.
-    -- Manual check: folder .. "/Images/A.png"
-    local imgDir = folder .. "/Images"
-    
-    FACES_CONFIG.A = imgDir .. "/A.png"
-    FACES_CONFIG.B = imgDir .. "/B.png"
-    FACES_CONFIG.C = imgDir .. "/C.png"
-    ASSETS_READY = true
-end)
+if CONFIG.enableFaces then
+    web.loadRemoteAssets(ZIP_URL, function(err, folder)
+        if err then
+            ac.log("DriftChaseMonitor: Failed to load assets: " .. tostring(err))
+            return
+        end
+        
+        -- folder 是资源解压后的临时目录
+        ac.log("DriftChaseMonitor: Assets loaded at " .. folder)
+        
+        -- Images.zip structure: Images/A.png
+        -- We assume the zip structure is maintained.
+        -- Manual check: folder .. "/Images/A.png"
+        local imgDir = folder .. "/Images"
+        
+        FACES_CONFIG.A = imgDir .. "/A.png"
+        FACES_CONFIG.B = imgDir .. "/B.png"
+        FACES_CONFIG.C = imgDir .. "/C.png"
+        ASSETS_READY = true
+    end)
+end
 
 -- 纹理管理器 (Canvas 代理版)
 local TextureManager = {
@@ -722,29 +724,133 @@ end
 
 -- [New] 聊天消息接入 (Chat Integration)
 -- [New] 聊天消息接入 (Chat Integration)
-ac.onChatMessage(function(p1, p2, p3)
-    -- Robust detection: arguments vary by CSP version/server context
-    local msg = p1
-    local carIndex = -1
+-- ==============================================================
+-- [New] Bilibili Style Danmaku System (弹幕系统)
+-- ==============================================================
+local DANMAKU_POOL = {}
+local DANMAKU_CONFIG = {
+    speed = 200,      -- Pixels per second
+    life = 10.0,      -- Max life (failsafe)
+    fontSize = 30,    -- Font size
+    lineHeight = 35,  -- Height per line slot
+    maxLines = 10,    -- Max concurrent lines (top of screen)
+    opacity = 1.0,    -- Opacity
+}
+
+local function addDanmaku(text, color)
+    local uiState = ac.getUI()
+    local windowWidth = uiState.windowSize.x
     
-    if type(p2) == "number" then
-        carIndex = p2
-    elseif type(p3) == "number" then
-        carIndex = p3
+    -- Randomize line (Slot 0 to 9)
+    local lineIdx = math.random(0, DANMAKU_CONFIG.maxLines - 1)
+    
+    -- Jitter speed (150 - 250 px/s)
+    local speed = DANMAKU_CONFIG.speed + math.random(-50, 50)
+    
+    table.insert(DANMAKU_POOL, {
+        text = text,
+        x = windowWidth, -- Start from right edge
+        y = 50 + (lineIdx * DANMAKU_CONFIG.lineHeight), -- Top offset
+        speed = speed,
+        color = color or rgbm(1, 1, 1, 1),
+        width = ui.measureText(text).x -- Pre-calc width
+    })
+end
+
+local function updateAndDrawDanmaku(dt)
+    -- [Fix] Fallback if dt is nil (UI callback sometimes missing args)
+    dt = dt or ac.getDeltaT()
+    
+    local uiState = ac.getUI()
+    ui.beginTransparentWindow("DanmakuLayer", vec2(0,0), uiState.windowSize)
+    
+    ui.pushFont(ui.Font.Title) -- Use larger font
+    
+    for i = #DANMAKU_POOL, 1, -1 do
+        local item = DANMAKU_POOL[i]
+        
+        -- Update Pos
+        item.x = item.x - item.speed * dt
+        
+        -- Draw (Simple Text with Shadow for visibility)
+        local pos = vec2(item.x, item.y)
+        local shadowPos = pos + vec2(2, 2)
+        
+        -- Draw Shadow (Black)
+        ui.setCursor(shadowPos)
+        ui.textColored(item.text, rgbm(0, 0, 0, 0.8 * DANMAKU_CONFIG.opacity))
+        
+        -- Draw Text (White/Color)
+        ui.setCursor(pos)
+        ui.textColored(item.text, item.color)
+        
+        -- Cleanup if off-screen (Left side)
+        -- item.x + item.width < 0 means fully off-screen
+        if item.x < -item.width - 50 then
+            table.remove(DANMAKU_POOL, i)
+        end
+    end
+    
+    ui.popFont()
+    ui.endTransparentWindow()
+end
+
+-- Hook into drawUI
+local _original_drawUI = script.drawUI
+script.drawUI = function(dt)
+    if _original_drawUI then _original_drawUI(dt) end
+    updateAndDrawDanmaku(dt)
+end
+-- ==============================================================
+
+-- [New] 聊天消息接入 (Chat Integration)
+ac.onChatMessage(function(msg, senderName, carIndex)
+    -- 1. 自动修正参数 (Handle dynamic arguments)
+    if type(senderName) == "number" and carIndex == nil then
+        carIndex = senderName
+        senderName = nil
+    end
+
+    -- 2. 名字查找 Fallback
+    local senderCar = nil
+    if (not carIndex or carIndex == -1) and type(senderName) == "string" then
+        local sim = ac.getSim()
+        for i = 0, sim.carsCount - 1 do
+            local c = ac.getCar(i)
+            if c and c.driverName == senderName then
+                carIndex = i
+                senderCar = c
+                break
+            end
+        end
     end
     
     -- Debug Log
-    ac.log("DriftChaseChat: Msg="..tostring(msg).." Index="..tostring(carIndex))
+    ac.log("DriftChaseChat: Msg="..tostring(msg).." Sender="..tostring(senderName))
 
+    -- [New] 触发全屏弹幕 (Global Danmaku)
+    -- 任何消息都显示为弹幕，不管在不在视野内
+    -- 如果是自己发的，显示为黄色
+    local isSelf = (carIndex == ac.getSim().focusedCar)
+    local danmakuColor = isSelf and rgbm(1, 0.8, 0, 1) or rgbm(1, 1, 1, 1)
+    
+    -- Format: "Name: Msg"
+    local displayText = msg
+    if senderName then 
+        displayText = senderName .. ": " .. msg 
+    elseif senderCar then
+        displayText = senderCar.driverName .. ": " .. msg
+    end
+    
+    addDanmaku(displayText, danmakuColor)
+
+    -- 3. 维持原本的 3D 气泡逻辑 (仅当车在附近时有效)
     if carIndex and carIndex >= 0 and carIndex < ac.getSim().carsCount then
         -- [Fix] Smart Dedup (防止重复渲染)
-        -- 检查该车辆是否已经在显示这条消息 (且处于初始阶段 < 1.0s)
         local existing = carPopups[carIndex]
         if existing and existing.text == msg and existing.age < 1.0 then
-            return -- Duplicate message detected (Echo)
+            return 
         end
-        
-        -- Mood 4 = Green (Chat)
         add3DMessage(carIndex, msg, 4)
     end
 end)
