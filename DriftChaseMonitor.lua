@@ -385,7 +385,14 @@ function script.update(dt)
                 -- Use cached drift state
                 local isLeaderDrifting = driftStates[j]
                 
-                    if isChaserDrifting and isLeaderDrifting and isBehind then
+                -- [Fix] Speed Check: 
+                -- Must be moving faster than minSpeed (20km/h) to count as chase
+                -- Avoids parked cars triggering "Good Chase"
+                local chaserSpeed = chaser.velocity:length() * 3.6
+                local leaderSpeed = leader.velocity:length() * 3.6
+                local isMovingFastEnough = (chaserSpeed > CONFIG.minSpeed) and (leaderSpeed > CONFIG.minSpeed)
+                
+                if isChaserDrifting and isLeaderDrifting and isBehind and isMovingFastEnough then
                        -- [New] 角度一致性检查
                        -- 必须动作同步才能得分 (防止瞎蹭)
                        local leaderSlip = getSlipAngle(leader)
