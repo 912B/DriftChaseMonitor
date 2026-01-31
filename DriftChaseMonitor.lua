@@ -670,7 +670,7 @@ function script.draw3D(dt)
             end
       end
   end
-  end
+
   
   -- [New] 3D Danmaku (HUD)
   updateAndDrawDanmaku(dt)
