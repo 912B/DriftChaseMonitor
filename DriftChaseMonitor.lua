@@ -25,7 +25,7 @@ local CONFIG = {
 
   driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
   
-  debugSpeed = true,   -- [Debug] 开启 50x 涨星速度 (方便测试) - Release时请改为 false
+  debugSpeed = false,   -- [Debug] 开启 50x 涨星速度 (方便测试) - Release时请改为 false
 }
 
 -- [New] 弹幕配置 (Danmaku Config) - Adjusted for 3D World Space (Appears as HUD)
