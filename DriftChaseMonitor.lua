@@ -107,6 +107,56 @@ local driftTimers = {} -- [New] 漂移断开计时器 (Grace Logic)
 local lastDistances = {}
 local chaseTimers = {} 
 
+-- [New] Overhead Messages System
+local overheadMessages = {} -- Key: carIndex, Value: { text, color, age, duration }
+
+local function addOverheadMessage(carIndex, text, color)
+    overheadMessages[carIndex] = {
+        text = text,
+        color = color,
+        age = 0,
+        duration = 4.0
+    }
+end
+
+local function updateAndDrawOverhead(dt)
+    local sim = ac.getSim()
+    local camPos = ac.getCameraPosition()
+    
+    for carIndex, msg in pairs(overheadMessages) do
+        msg.age = msg.age + dt
+        if msg.age > msg.duration then
+            overheadMessages[carIndex] = nil
+        else
+            local car = ac.getCar(carIndex)
+            if car then
+                -- Position: Above Car + slight bobbing or rise?
+                -- Just static overhead for readability
+                local headPos = car.position + vec3(0, 1.8, 0) 
+                
+                -- Fade out
+                local alpha = 1.0
+                if msg.age > (msg.duration - 1.0) then
+                    alpha = (msg.duration - msg.age)
+                end
+                
+                -- Scale by distance? render.debugText handles perspective, 
+                -- but we might want it slightly larger.
+                local dist = (headPos - camPos):length()
+                local scale = math.clamp(50.0 / dist, 1.0, 3.0) 
+                -- Logic: close = 1.0, far = 3.0? No, debugText shrinks with distance.
+                -- We want to counteract shrinking slightly or just let it be?
+                -- render.debugText(pos, text, color, scale)
+                -- Standard scale 1.0 is fine for debugText usually.
+                
+                msg.color.mult = alpha -- Apply fade
+                
+                render.debugText(headPos, msg.text, msg.color, 1.2)
+            end
+        end
+    end
+end 
+
 -- 工具：HSV 转 RGB
 local function hsvToRgb(h, s, v, a)
   local r, g, b
@@ -215,24 +265,16 @@ local function add3DMessage(carIndex, text, mood)
       local distanceInFront = toTarget:dot(camForward)
       local isInFront = distanceInFront > 0.5 -- At least 0.5m in front
       
-      local proj = render.projectPoint(headPos)
-      
-      -- Screen bounds check (normalized 0-1 usually, but allow buffer)
-      local isOnScreen = (proj.x > -0.1 and proj.x < 1.1)
-                     and (proj.y > -0.1 and proj.y < 1.1)
-      
-      if not (isInFront and isOnScreen) then return end
+      -- For overhead, we still probably want to avoid generating if totally behind, 
+      -- but strictly "onScreen" check is less critical since render.debugText handles clipping.
+      -- Keeping the logic to prevent spam processing for invisible cars is good.
+      if not isInFront then return end
 
-      local rawName = car.driverName
-      if type(rawName) == "function" then
-          name = rawName(car)
-      elseif type(rawName) == "string" then
-          name = rawName
-      end
+      -- Note: Removed name prefix as position identifies the car
   end
   
-  -- [Visual] Use Flash icon for Taunt/Mockery
-  addDanmaku(name .. " ⚡ " .. text, col)
+  -- [Visual] Overhead Message (Taunt)
+  addOverheadMessage(carIndex, text, col)
 end
 
 -- 活跃的追踪目标 (用于 UI 显示)
@@ -668,6 +710,9 @@ end
 function script.draw3D(dt)
   -- [New] 3D Danmaku (HUD)
   updateAndDrawDanmaku(dt)
+  
+  -- [New] 3D Overhead (Taunts)
+  updateAndDrawOverhead(dt)
 end
 
 -- ==============================================================
