@@ -731,8 +731,8 @@ local DANMAKU_POOL = {}
 local DANMAKU_CONFIG = {
     speed = 200,      -- Pixels per second
     life = 10.0,      -- Max life (failsafe)
-    fontSize = 30,    -- Font size
-    lineHeight = 35,  -- Height per line slot
+    fontSize = 45,    -- Font size (Increased from 30)
+    lineHeight = 50,  -- Height per line slot (Increased from 35)
     maxLines = 10,    -- Max concurrent lines (top of screen)
     opacity = 1.0,    -- Opacity
 }
