@@ -26,6 +26,17 @@ local CONFIG = {
   enableFaces = false -- [New] 是否启用表情包 (SDK Mode Safe)
 }
 
+-- [New] 弹幕配置 (Danmaku Config)
+local DANMAKU_CONFIG = {
+    speed = 200,      -- Pixels per second
+    life = 10.0,      -- Max life (failsafe)
+    fontSize = 60,    -- Font size (Base)
+    lineHeight = 70,  -- Height per line slot 
+    maxLines = 10,    -- Max concurrent lines
+    opacity = 1.0,    -- Opacity
+}
+local DANMAKU_POOL = {}
+
 -- 状态变量
 local carPopups = {} -- 每辆车的飘字 {text, age, color, offset}
 local lastMessageTime = {} -- [New] 记录上一次消息触发时间 {pairKey -> time}
@@ -722,20 +733,10 @@ function script.draw3D(dt)
   end
 end
 
--- [New] 聊天消息接入 (Chat Integration)
--- [New] 聊天消息接入 (Chat Integration)
 -- ==============================================================
 -- [New] Bilibili Style Danmaku System (弹幕系统)
 -- ==============================================================
-local DANMAKU_POOL = {}
-local DANMAKU_CONFIG = {
-    speed = 200,      -- Pixels per second
-    life = 10.0,      -- Max life (failsafe)
-    fontSize = 60,    -- Font size (Direct pixel size for render.text)
-    lineHeight = 70,  -- Height per line slot 
-    maxLines = 10,    -- Max concurrent lines
-    opacity = 1.0,    -- Opacity
-}
+-- (Config at top)
 
 local function addDanmaku(text, color)
     local uiState = ac.getUI()
@@ -815,11 +816,6 @@ script.drawUI = function(dt)
     updateAndDrawDanmaku(dt)
 end
 
--- Clean up draw3D hook if it was added (We are modifying the file so the old hook is gone from this block)
--- But wait, we replaced the block in previous step.
--- We need to make sure we don't leave a draw3D hook. 
--- The replace target includes the draw3D hook lines, so they will be overwritten by this UI hook.
--- Perfect.
 -- ==============================================================
 
 -- [New] 聊天消息接入 (Chat Integration)
@@ -857,7 +853,6 @@ ac.onChatMessage(function(msg, senderName, carIndex)
     local danmakuColor = isSelf and rgbm(1, 0.8, 0, 1) or rgbm(1, 1, 1, 1)
     
     -- 3. 构造显示名称 (Priority: Car.driverName > senderName > "Unknown")
-    -- 3. 构造显示名称 (Priority: Car.driverName > senderName > "Unknown")
     local finalName = senderName
     if senderCar then
         -- [Fix] Robust Name Fetching (handle function vs string vs nil)
@@ -884,13 +879,4 @@ ac.onChatMessage(function(msg, senderName, carIndex)
     
     addDanmaku(displayText, danmakuColor)
 
-    -- 4. [Disabled] 车顶不再显示聊天内容
-    -- if carIndex and carIndex >= 0 and carIndex < ac.getSim().carsCount then
-    --     -- [Fix] Smart Dedup
-    --     local existing = carPopups[carIndex]
-    --     if existing and existing.text == msg and existing.age < 1.0 then
-    --         return 
-    --     end
-    --     add3DMessage(carIndex, msg, 4)
-    -- end
 end)
