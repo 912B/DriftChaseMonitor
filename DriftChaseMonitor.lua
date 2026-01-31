@@ -747,8 +747,9 @@ ac.onChatMessage(function(msg, senderName, carIndex)
         senderName = nil
     end
     
-    -- [Fix] Ignore System Messages (Index -1) and Empty Messages
-    -- Note: Don't block 'nil' carIndex because we might search by senderName below.
+    -- [Fix] Ignore System Messages (Index < 0 are System/Server KeepAlives) and Empty Messages
+    -- The "Driver -1" bubbles are caused by rendering these system packets.
+    -- We must filter them out to only show real player chat.
     if (carIndex and carIndex < 0) or (not msg or msg == "") or (not carIndex and not senderName) then 
         return 
     end
