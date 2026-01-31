@@ -5,10 +5,10 @@
 local CONFIG = {
   minDriftAngle = 10, -- 最小漂移角度
   minSpeed = 20,      -- 最小速度
-  distPraise = 3.5,   -- TIER 3: 贴贴 (赞扬/阴阳)
-  distNormal = 10.0,   -- Normal Chase Range (Accumulates slowly)
-  distMock = 20.0,    -- TIER 2: 嘲讽 (中距离)
-  distProvoke = 40.0, -- TIER 1: 挑衅 (远距离 - Extended to 40m)
+  distPraise = 2,   -- TIER 3: 贴贴 (赞扬/阴阳)
+  distNormal = 5.0,   -- Normal Chase Range (Accumulates slowly)
+  distMock = 10.0,    -- TIER 2: 嘲讽 (Synced with Scoring Range)
+  distProvoke = 40.0, -- TIER 1: 挑衅 (Scope for Danmaku Logic)
   
   maxAngleDiff = 35, -- [New] 最大角度差 (超过此值不积分) - Relaxed from 20 to 35 for better feel
   starDuration = 1.0, -- [New] 单颗星星所需时间 (秒) -> User requested harder, let's keep 1.0 logic first but multiplier controls it? 
@@ -60,7 +60,7 @@ local function addDanmaku(text, color)
         -- Top-down layout: Start from top (+Height/2) and go down
         y = (DANMAKU_CONFIG.height / 3) - (lineIdx * DANMAKU_CONFIG.lineHeight), 
         speed = speed,
-        color = color or rgbm(1, 1, 1, 1),
+        color = color or rgbm(0.4, 0.4, 0.4, 1),
     })
 end
 
@@ -118,6 +118,7 @@ local function addOverheadMessage(carIndex, text, color)
 end
 
 local function updateAndDrawOverhead(dt)
+    dt = dt or ac.getDeltaT()
     local sim = ac.getSim()
     local camPos = ac.getCameraPosition()
     
@@ -247,12 +248,13 @@ end
 
 -- [New] 添加 3D 飘字 -> 改为发送到 3D 弹幕 (Redirect to Danmaku)
 local function add3DMessage(carIndex, text, mood)
-  -- [Fix] Reduce brightness to avoid "Glow/Bloom" making text unreadable
-  local col = rgbm(0.9, 0.9, 0.9, 1)
-  if mood == 2 then col = rgbm(0.9, 0.7, 0, 1) -- Gold (Dimmed)
-  elseif mood == 1 then col = rgbm(0, 0.9, 0.9, 1) -- Cyan (Dimmed)
-  elseif mood == 3 then col = rgbm(0.9, 0.2, 0.2, 1) -- Red (Dimmed)
-  elseif mood == 4 then col = rgbm(0, 0.9, 0, 1)   -- Green (Chat - Dimmed)
+  -- [Fix] Reduce brightness Drastically to avoid "Glow/Bloom"
+  -- Night Mode Safe: Values around 0.3 - 0.4
+  local col = rgbm(0.4, 0.4, 0.4, 1)
+  if mood == 2 then col = rgbm(0.4, 0.3, 0, 1) -- Gold (Dimmed)
+  elseif mood == 1 then col = rgbm(0, 0.4, 0.4, 1) -- Cyan (Dimmed)
+  elseif mood == 3 then col = rgbm(0.4, 0.15, 0.15, 1) -- Red (Dimmed)
+  elseif mood == 4 then col = rgbm(0, 0.4, 0, 1)   -- Green (Chat - Dimmed)
   end
   
   -- Append Driver Name if possible
@@ -260,6 +262,12 @@ local function add3DMessage(carIndex, text, mood)
   local name = "Car " .. carIndex
   
   if car then
+      -- [New] Distance Filter: Only show danmaku if car is within interaction range (Provoke Range)
+      -- This avoids spam from distant battles.
+      local sim = ac.getSim()
+      local focusPos = ac.getCar(sim.focusedCar).position
+      if math.distance(car.position, focusPos) > CONFIG.distProvoke then return end
+
       -- [Fix] Manual Depth Check because render.projectPoint returns vec2
       local headPos = car.position + vec3(0, 1.0, 0) -- [Restore] Define headPos first
       local camPos = ac.getCameraPosition()
@@ -288,8 +296,9 @@ local activeTarget = {
 }
 
 -- [New] Report Score Helper
-local function reportScore(time)
-   if time < 1.0 then return end
+local function reportScore(scoreTime, realTime)
+   -- [Refined] Only report Blue Star or above (> 5s score time)
+   if scoreTime < 5.0 then return end
    
    -- Security Check: 
    -- 1. Spectator: Don't send chat if I am just watching.
@@ -312,26 +321,59 @@ local function reportScore(time)
 
    -- Calc Logic (Sync with Draw)
    local CYCLE_Time = 5.0
-   local cycle = math.floor(time / CYCLE_Time)
-   local totalStars = math.floor(time / 1.0)
+   local cycle = math.floor(scoreTime / CYCLE_Time)
+   local totalStars = math.floor(scoreTime / 1.0)
    
    -- Colors: White -> Blue -> Green -> Gold -> Purple
    local colorNames = { "White", "Blue", "Green", "Gold", "Purple" }
+   local colorDisplayMap = { White="白", Blue="蓝", Green="绿", Gold="金", Purple="紫" }
+   
    local colorIdx = math.clamp(cycle + 1, 1, #colorNames)
-   local colorName = colorNames[colorIdx]
+   local colorKey = colorNames[colorIdx]
+   local displayColor = colorDisplayMap[colorKey] or "白"
    
    -- [New] Pick random sarcastic comment
-   local comments = RESULT_COMMENTS[colorName] or RESULT_COMMENTS.White
+   -- [New] Pick random sarcastic comment
+   local comments = RESULT_COMMENTS[colorKey] or RESULT_COMMENTS.White
    local comment = comments[math.random(#comments)]
    
    -- Build Message
-   local msg = string.format("追走结算: %s色 %d 星 (%.1fs) | 评价: %s", colorName, totalStars, time, comment)
+   -- Build Message
+   -- [Refined] Only show Score Time (积分总时长)
+   local msg = string.format("追走结算: %s色 %d 星 (积分:%.1fs) | %s", displayColor, totalStars, scoreTime, comment)
    ac.sendChatMessage(msg)
+end
+
+-- [New] Scoring Helper Function
+-- Encapsulates Geometric Difficulty & Distance Logic
+local function calculateScoreGain(currentActiveTime, dist, realDt)
+    -- Levels based on 5-second intervals (5 stars per level if base is 1s)
+    local currentLevel = math.floor(currentActiveTime / 5)
+    
+    -- Geometric Penalty: 5^Level
+    -- Level 0 (0-5s):   1.0
+    -- Level 1 (5-10s):  0.2   (1/5)
+    -- Level 2 (10-15s): 0.04  (1/25)
+    -- Level 3 (15-20s): 0.008 (1/125)
+    local levelPenalty = 1.0 / math.pow(5.0, currentLevel)
+    
+    local scoreGain = 0
+    
+    if dist < CONFIG.distPraise then
+        -- Perfect Zone (<3.5m): Base 1.0 (1s real = 1s score)
+        scoreGain = realDt * 1.0 * levelPenalty
+    elseif dist < CONFIG.distNormal then
+        -- Normal Zone (3.5-10m): Base 0.2 (5s real = 1s score)
+        scoreGain = realDt * 0.2 * levelPenalty
+    end
+    
+    return scoreGain
 end
 
 -- 主更新逻辑 (Global Loop)
 function script.update(dt)
   local realDt = ac.getDeltaT() -- [Fix] Define realDt for global use
+  local updatedStats = {} -- [Fix] Track focused car stats updates for cleanup
   -- 2. 更新 3D 粒子 (已移除)
   
   -- 3. 更新 3D 飘字 (已重定向到弹幕，此处移除)
@@ -496,7 +538,7 @@ function script.update(dt)
                 
                 -- [MERGED] 玩家专属逻辑: 完美追走
                 if i == sim.focusedCar then
-                    local stats = perfectChaseStats[pairKey] or { activeTime = 0, graceTimer = 0 }
+                    local stats = perfectChaseStats[pairKey] or { activeTime = 0, realTime = 0, graceTimer = 0 }
                     local realDt = ac.getDeltaT()
                     
                     local leaderSlip = getSlipAngle(leader)
@@ -505,26 +547,35 @@ function script.update(dt)
 
 
                     if isAngleGood then
-                        -- [New] 几何难度递增 (Geometric Difficulty)
-                        -- 随着等级提升 (颜色变化)，涨星速度几何级下降
-                        -- User requested "Exponential Explosion": Changed base from 1.5 to 2.5
-                        local currentLevel = math.floor(stats.activeTime / 5)
-                        local levelPenalty = 1.0 / math.pow(2.5, currentLevel)
+                        -- Calculate Score using Helper
+                        local gain = calculateScoreGain(stats.activeTime, dist, realDt)
                         
-                        if dist < CONFIG.distPraise then
-                             -- Perfect Chase (Base: 0.2/s -> 5s/Star) * Penalty
+                        if gain > 0 then
+                             -- Scoring (Praise or Normal)
                              stats.graceTimer = 0
-                             stats.activeTime = stats.activeTime + (realDt * 0.2 * levelPenalty) 
-                        elseif dist < CONFIG.distNormal then
-                             -- Normal Chase (Base: 0.04/s -> 25s/Star) * Penalty
+                             stats.activeTime = stats.activeTime + gain
+                             stats.realTime = stats.realTime + realDt
+                        elseif dist < CONFIG.distMock then
+                             -- In Mock Range (5m - 10m): No Score, but MAINTAIN chase
+                             -- Same behavior as "Bad Angle" in range -> Pause Decay
                              stats.graceTimer = 0
-                             stats.activeTime = stats.activeTime + (realDt * 0.04 * levelPenalty)
+                             stats.realTime = stats.realTime + realDt
+                        else
+                             -- Lost Chase (Dist > Mock)
+                             stats.graceTimer = stats.graceTimer + realDt
+                             if stats.graceTimer > 1.0 then 
+                                 reportScore(stats.activeTime, stats.realTime) -- [New] Report
+                                 stats.activeTime = 0 
+                                 stats.realTime = 0
+                             end
+                        end
                         else
                              -- Lost Chase
                              stats.graceTimer = stats.graceTimer + realDt
                              if stats.graceTimer > 1.0 then 
-                                 reportScore(stats.activeTime) -- [New] Report
+                                 reportScore(stats.activeTime, stats.realTime) -- [New] Report
                                  stats.activeTime = 0 
+                                 stats.realTime = 0
                              end
                         end
                     else
@@ -537,12 +588,14 @@ function script.update(dt)
                              -- Range Bad -> DECAY (Lost Chase)
                              stats.graceTimer = stats.graceTimer + realDt
                              if stats.graceTimer > 1.0 then 
-                                 reportScore(stats.activeTime) -- [New] Report
+                                 reportScore(stats.activeTime, stats.realTime) -- [New] Report
                                  stats.activeTime = 0 
+                                 stats.realTime = 0
                              end
                          end
                     end
                     perfectChaseStats[pairKey] = stats
+                    updatedStats[pairKey] = true -- [Fix] Mark as active
                     
                     -- ... Best Target Logic check angle too?
                     -- Best Target logic relies on "isChaserDrifting and isLeaderDrifting".
@@ -588,6 +641,22 @@ function script.update(dt)
     end
   end
   
+  -- [Fix] Cleanup Stale Stats (Frozen Chase Bug)
+  -- If we didn't update the stats this frame (e.g. stopped drifting/parked), decay them immediately.
+  for k, stats in pairs(perfectChaseStats) do
+      if not updatedStats[k] then
+          stats.graceTimer = stats.graceTimer + realDt
+          if stats.graceTimer > 1.0 then 
+               -- Report if valid score exists
+               if stats.activeTime > 0 then
+                   reportScore(stats.activeTime, stats.realTime)
+               end
+               -- Remove from list
+               perfectChaseStats[k] = nil
+          end
+      end
+  end
+
   -- 更新全局状态供 drawUI 使用
   if frameBestTarget then
       activeTarget = frameBestTarget
@@ -776,8 +845,7 @@ ac.onChatMessage(function(msg, senderName, carIndex)
     ac.log("DriftChaseChat: Msg="..tostring(msg).." Sender="..tostring(senderName).." Index="..tostring(carIndex))
 
     -- [New] 触发全屏弹幕 (Global Danmaku)
-    local isSelf = (carIndex == ac.getSim().focusedCar)
-    local danmakuColor = isSelf and rgbm(1, 0.8, 0, 1) or rgbm(1, 1, 1, 1)
+    local danmakuColor = isSelf and rgbm(0.5, 0.35, 0, 1) or rgbm(0.4, 0.4, 0.4, 1)
     
     -- 3. 构造显示名称 (Priority: Car.driverName > senderName > "Unknown")
     local finalName = senderName
