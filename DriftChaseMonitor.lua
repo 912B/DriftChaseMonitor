@@ -245,11 +245,12 @@ end
 
 -- [New] 添加 3D 飘字 -> 改为发送到 3D 弹幕 (Redirect to Danmaku)
 local function add3DMessage(carIndex, text, mood)
-  local col = rgbm(1, 1, 1, 1)
-  if mood == 2 then col = rgbm(1, 0.8, 0, 1) -- Gold
-  elseif mood == 1 then col = rgbm(0, 1, 1, 1) -- Cyan
-  elseif mood == 3 then col = rgbm(1, 0.2, 0.2, 1) -- Red
-  elseif mood == 4 then col = rgbm(0, 1, 0, 1)   -- Green (Chat)
+  -- [Fix] Reduce brightness to avoid "Glow/Bloom" making text unreadable
+  local col = rgbm(0.9, 0.9, 0.9, 1)
+  if mood == 2 then col = rgbm(0.9, 0.7, 0, 1) -- Gold (Dimmed)
+  elseif mood == 1 then col = rgbm(0, 0.9, 0.9, 1) -- Cyan (Dimmed)
+  elseif mood == 3 then col = rgbm(0.9, 0.2, 0.2, 1) -- Red (Dimmed)
+  elseif mood == 4 then col = rgbm(0, 0.9, 0, 1)   -- Green (Chat - Dimmed)
   end
   
   -- Append Driver Name if possible
