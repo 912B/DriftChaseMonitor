@@ -301,6 +301,15 @@ local function reportScore(time)
    -- If car is remote, it's not us -> return.
    if not focusCar or focusCar.isRemote then return end
 
+   -- [New] Sarcastic Comments for Results
+   local RESULT_COMMENTS = {
+       White = { "是在梦游吗?", "车是租来的?", "辅助轮还没拆?", "建议去开碰碰车!", "是在画龙吗?", "完全没跟上啊!", "是在散步吗?" },
+       Blue = { "也就听个响!", "勉强能看!", "还没睡醒?", "是在热身吗?", "马马虎虎吧!", "能不能再近点?", "稍微认真点行吗?" },
+       Green = { "有点东西!", "及格了!", "运气不错!", "还能更快吗?", "这就满足了?", "一般般吧!", "还可以再贴近点!" },
+       Gold = { "这是开了挂?", "有点帅哦!", "请收下我的膝盖!", "这才是追走!", "神仙打架!", "不仅快还稳!", "绝了!" },
+       Purple = { "这是人开的?", "外星人降临!", "甚至想报警!", "您是职业的吗?", "太离谱了!", "甚至看不懂操作!", "令人窒息的操作!" }
+   }
+
    -- Calc Logic (Sync with Draw)
    local CYCLE_Time = 5.0
    local cycle = math.floor(time / CYCLE_Time)
@@ -311,8 +320,12 @@ local function reportScore(time)
    local colorIdx = math.clamp(cycle + 1, 1, #colorNames)
    local colorName = colorNames[colorIdx]
    
+   -- [New] Pick random sarcastic comment
+   local comments = RESULT_COMMENTS[colorName] or RESULT_COMMENTS.White
+   local comment = comments[math.random(#comments)]
+   
    -- Build Message
-   local msg = string.format("追走结算: %s色 %d 星 (%.1fs)", colorName, totalStars, time)
+   local msg = string.format("追走结算: %s色 %d 星 (%.1fs) | %s", colorName, totalStars, time, comment)
    ac.sendChatMessage(msg)
 end
 
