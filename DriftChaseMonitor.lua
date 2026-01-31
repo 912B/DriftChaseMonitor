@@ -765,56 +765,61 @@ local function updateAndDrawDanmaku(dt)
     -- [Fix] Fallback if dt is nil
     dt = dt or ac.getDeltaT()
     
+    -- [Fix] Revert to UI system because render.text is not available on some CSP versions
+    local uiState = ac.getUI()
+    ui.beginTransparentWindow("DanmakuLayer", vec2(0,0), uiState.windowSize)
+    
+    -- [Fix] Massive Scale for CJK
+    -- Standard font is small (~15px). To get 150px equivalent, we need ~10x scale.
+    -- Let's try explicit 5x first which should be huge.
+    local targetSize = DANMAKU_CONFIG.fontSize or 60
+    local scale = targetSize / 15 
+    if ui.setWindowFontScale then ui.setWindowFontScale(scale) end
+    
+    ui.pushFont(ui.Font.Main) -- Safe CJK font
+    
     for i = #DANMAKU_POOL, 1, -1 do
         local item = DANMAKU_POOL[i]
         
         -- Update Pos
         item.x = item.x - item.speed * dt
         
-        -- Draw using render.text (Direct Game Engine Rendering)
-        -- render.text(pos: vec2, text: string, color: rgbm, size: float)
+        -- Draw using UI (Safe)
         local pos = vec2(item.x, item.y)
         local shadowPos = pos + vec2(2, 2)
         
-        -- Draw Shadow
-        render.text(shadowPos, item.text, rgbm(0, 0, 0, 0.8 * DANMAKU_CONFIG.opacity), DANMAKU_CONFIG.fontSize)
+        -- Shadow
+        ui.setCursor(shadowPos)
+        ui.textColored(item.text, rgbm(0, 0, 0, 0.8 * DANMAKU_CONFIG.opacity))
         
-        -- Draw Text
-        render.text(pos, item.text, item.color, DANMAKU_CONFIG.fontSize)
+        -- Text
+        ui.setCursor(pos)
+        ui.textColored(item.text, item.color)
         
-        -- Cleanup (Simplified off-screen check)
-        if item.x < -1000 then -- Safe margin
+        -- Cleanup
+        if item.x < -1000 then 
             table.remove(DANMAKU_POOL, i)
         end
     end
+    
+    ui.popFont()
+    -- Reset scale? (Window scope handles it usually, but good practice if mixed)
+    if ui.setWindowFontScale then ui.setWindowFontScale(1) end
+    ui.endTransparentWindow()
 end
 
--- Hook into draw3D (Overlay) instead of drawUI
--- We assume draw3D is called every frame for transparent rendering
-local _original_draw3D = script.draw3D
-script.draw3D = function(dt)
-    if _original_draw3D then _original_draw3D(dt) end
+-- Hook back into drawUI (Restore original hook logic)
+local _original_drawUI = script.drawUI
+script.drawUI = function(dt)
+    if _original_drawUI then _original_drawUI(dt) end
     updateAndDrawDanmaku(dt)
 end
 
--- Disable UI hook (Remove previous hook logic manually or effectively overwrite)
-local _original_drawUI = script.drawUI
-script.drawUI = function(dt)
-    -- Only call original UI, no Danmaku here
-    -- (We rely on _original_drawUI being the BASE function or previous hook)
-    -- Ideally we should check if we wrapped it before. 
-    -- Since we are replacing the global script.drawUI, we just call the original logic.
-    -- To verify: check lines 480-650 in original file which define drawUI.
-    -- Wait, if _original_drawUI points to the PREVIOUS wrapped function (with danmaku), we might recurse or duplicate?
-    -- No, this replace_file_content replaces the BLOCK where the hook was defined.
-    -- So this new block defines the hooks fresh.
-    -- Checking the original code structure:
-    -- The original code defines `function script.drawUI(dt)` at line 481.
-    -- The previous edit added a hook at line 772.
-    -- We are replacing line 727 to 779.
-    -- So `_original_drawUI` will capture `script.drawUI` which IS the main UI function (line 481).
-    if _original_drawUI then _original_drawUI(dt) end
-end
+-- Clean up draw3D hook if it was added (We are modifying the file so the old hook is gone from this block)
+-- But wait, we replaced the block in previous step.
+-- We need to make sure we don't leave a draw3D hook. 
+-- The replace target includes the draw3D hook lines, so they will be overwritten by this UI hook.
+-- Perfect.
 -- ==============================================================
 
 -- [New] 聊天消息接入 (Chat Integration)
