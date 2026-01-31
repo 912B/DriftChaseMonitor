@@ -26,6 +26,28 @@ local CONFIG = {
 
 
 
+-- [New] Grade Colors (Global)
+local GRADE_COLOR_NAMES = { "White", "Blue", "Green", "Gold", "Purple" }
+local GRADE_DISPLAY_MAP = { White="白", Blue="蓝", Green="绿", Gold="金", Purple="紫" }
+local GRADE_COLORS = {
+    rgbm(1, 1, 1, 1),         -- Lvl 1: White
+    rgbm(0, 0.6, 1, 1),       -- Lvl 2: Blue
+    rgbm(0, 1, 0, 1),         -- Lvl 3: Green
+    rgbm(1, 0.84, 0, 1),      -- Lvl 4: Gold
+    rgbm(0.8, 0, 1, 1)        -- Lvl 5: Purple
+}
+
+-- [New] UI Star Colors including Base (Gray)
+-- 0: Gray, 1: White, 2: Blue, 3: Green, 4: Gold, 5: Purple
+local UI_STAR_COLORS = {
+    rgbm(0.2, 0.2, 0.2, 0.5), -- Base (Gray)
+    rgbm(1, 1, 1, 1),         -- Lvl 1: White
+    rgbm(0, 0.6, 1, 1),       -- Lvl 2: Blue
+    rgbm(0, 1, 0, 1),         -- Lvl 3: Green
+    rgbm(1, 0.84, 0, 1),      -- Lvl 4: Gold
+    rgbm(0.8, 0, 1, 1)        -- Lvl 5: Purple
+}
+
 -- [New] 弹幕配置 (Danmaku Config) - Adjusted for 3D World Space (Appears as HUD)
 local DANMAKU_CONFIG = {
     -- World Units (Meters)
@@ -295,6 +317,28 @@ local activeTarget = {
     stats = nil
 }
 
+-- Helper: Get Chase Grade (Color, Stars) from Time
+local function getChaseGrade(seconds)
+    local CYCLE_Time = 5.0
+    local cycle = math.floor(seconds / CYCLE_Time)
+    
+    local colorIdx = math.clamp(cycle + 1, 1, #GRADE_COLOR_NAMES)
+    local colorKey = GRADE_COLOR_NAMES[colorIdx]
+    
+    -- Stars (0-4 per cycle)
+    local cycleStars = math.floor(seconds % 5)
+
+    -- Return standardized grade object
+    return {
+        key = colorKey,
+        name = GRADE_DISPLAY_MAP[colorKey] or "白",
+        color = GRADE_COLORS[colorIdx],
+        stars = cycleStars,
+        cycle = cycle,
+        totalStars = math.floor(seconds)
+    }
+end
+
 -- [New] Report Score Helper
 local function reportScore(scoreTime, realTime, leaderIndex)
    -- [Refined] Only report Blue Star or above (> 5s score time)
@@ -320,53 +364,23 @@ local function reportScore(scoreTime, realTime, leaderIndex)
    }
 
    -- Calc Logic (Sync with Draw)
-   local CYCLE_Time = 5.0
-   local cycle = math.floor(scoreTime / CYCLE_Time)
-   local totalStars = math.floor(scoreTime / 1.0)
-   local cycleStars = totalStars % 5 -- [Fixed] Limit to 0-4 stars per color (user requested 5 stars per color)
-   if cycleStars == 0 and totalStars > 0 then cycleStars = 5 end -- Optional: Prefer "5 stars" over "0 stars" at level cap? 
-   -- User said "Only 5 stars". Let's use 0-4 or 1-5?
-   -- If 4.9s -> 4 stars. 5.0s -> Blue 0? Or Blue 5?
-   -- Let's stick to 0-4, but if it is exactly multiple, it usually means "Full Previous" or "Empty Current".
-   -- Let's use simple modulo for now: 8s = 3 stars. 5s = 0 stars. 
-   -- Wait, 0 stars looks bad. Let's try: if % 5 == 0, show 5? 
-   -- No, that messes up the tier. 
-   -- Let's just use `cycleStars` as is (0-4). 0 means "Just Upgraded".
-   cycleStars = math.floor(scoreTime % 5)
-   
-   -- Colors: White -> Blue -> Green -> Gold -> Purple
-   local colorNames = { "White", "Blue", "Green", "Gold", "Purple" }
-   local colorDisplayMap = { White="白", Blue="蓝", Green="绿", Gold="金", Purple="紫" }
-   
-   local colorIdx = math.clamp(cycle + 1, 1, #colorNames)
-   local colorKey = colorNames[colorIdx]
-   local displayColor = colorDisplayMap[colorKey] or "白"
+   local grade = getChaseGrade(scoreTime)
    
    -- [New] Pick random sarcastic comment
-   -- [New] Pick random sarcastic comment
-   local comments = RESULT_COMMENTS[colorKey] or RESULT_COMMENTS.White
+   local comments = RESULT_COMMENTS[grade.key] or RESULT_COMMENTS.White
    local comment = comments[math.random(#comments)]
    
    -- Build Message
-   -- Build Message
    -- [Refined] Only show Score Time (积分总时长)
    -- [Refined] Only show Score Time (积分总时长)
-   local msg = string.format("追走结算: %s色 %d 星 (积分:%.1fs) | %s", displayColor, cycleStars, scoreTime, comment)
+   local msg = string.format("追走结算: %s色 %d 星 (积分:%.1fs) | %s", grade.name, grade.stars, scoreTime, comment)
    ac.sendChatMessage(msg)
    
    -- [New] Display Result on Leader's Roof (Overhead)
    if leaderIndex then
-       -- Determine simple color for 3D text
-       local col = rgbm(1, 1, 1, 1) -- Default White
-       if colorKey == "Blue" then col = rgbm(0, 0.6, 1, 1)
-       elseif colorKey == "Green" then col = rgbm(0, 1, 0, 1)
-       elseif colorKey == "Gold" then col = rgbm(1, 0.84, 0, 1)
-       elseif colorKey == "Purple" then col = rgbm(0.8, 0, 1, 1)
-       end
-       
        -- Short format for overhead: "🏆 5 Stars (Purple) | Nice!"
-       local shortMsg = string.format("🏆 %d 星 (%s) | %s", cycleStars, displayColor, comment)
-       addOverheadMessage(leaderIndex, shortMsg, col)
+       local shortMsg = string.format("🏆 %d 星 (%s) | %s", grade.stars, grade.name, comment)
+       addOverheadMessage(leaderIndex, shortMsg, grade.color)
    end
 end
 
@@ -745,31 +759,29 @@ function script.drawUI(dt)
               
               -- Star Rating System (Replaces Timer)
               if activeTime > 0.0 then
-                   local STAR_Count = 5
-                   local TIME_Per_Star = 1.0
-                   local CYCLE_Time = STAR_Count * TIME_Per_Star
-                   
-                   local cycle = math.floor(activeTime / CYCLE_Time)
-                   local localTime = activeTime % CYCLE_Time
-                   local activeStarIndex = math.floor(localTime / TIME_Per_Star) + 1 -- 1 to 5
-                   local activeStarProgress = (localTime % TIME_Per_Star) / TIME_Per_Star
-                   
-                   -- Color Palette (Updated: White -> Blue -> Green -> Gold -> Purple)
-                   local colors = {
-                       rgbm(0.2, 0.2, 0.2, 0.5), -- Base (Gray)
-                       rgbm(1, 1, 1, 1),         -- Lvl 1: White
-                       rgbm(0, 0.6, 1, 1),       -- Lvl 2: Blue
-                       rgbm(0, 1, 0, 1),         -- Lvl 3: Green
-                       rgbm(1, 0.84, 0, 1),      -- Lvl 4: Gold
-                       rgbm(0.8, 0, 1, 1)        -- Lvl 5: Purple
-                   }
-                   
-                   local baseCol = colors[math.min(cycle + 1, #colors)]     -- Current Cycle Background
-                   local fillCol = colors[math.min(cycle + 2, #colors)]     -- Filling Color
-                   
-                   -- If max level reached, just flash
-                   if cycle >= (#colors - 2) then
-                       baseCol = colors[#colors]
+                    -- Use Helper for consistent logic
+                    local grade = getChaseGrade(activeTime)
+                    local STAR_Count = 5
+                    
+                    -- Determine Colors based on grade.cycle using UI_STAR_COLORS (includes Gray Base)
+                    local colors = UI_STAR_COLORS
+                    
+                    local cycle = grade.cycle
+                    local baseCol = colors[math.min(cycle + 1, #colors)]     -- Current Cycle Background
+                    local fillCol = colors[math.min(cycle + 2, #colors)]     -- Filling Color
+                    
+                    -- If max level reached
+                    if cycle >= (#colors - 2) then
+                        baseCol = colors[#colors]
+                        fillCol = rgbm(1, 1, 1, 1) -- Flash White
+                    end
+                    
+                    -- Calc partial progress for current star
+                    local localTime = activeTime % 1.0 -- Assuming 1.0s per star
+                    -- Note: grade.stars is 0-4 (completed stars).
+                    -- So we are filling star index (grade.stars + 1).
+                    local activeStarIndex = grade.stars + 1 
+                    local activeStarProgress = localTime / 1.0
                        fillCol = rgbm(1, 1, 1, 1) -- Flash White
                    end
 
