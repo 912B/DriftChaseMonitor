@@ -635,6 +635,8 @@ function script.update(dt)
                                 stats = stats,
                                 isLocked = isLocked
                             }
+                            -- [Fix] Mark as displayed so we only report THIS one
+                            stats.isDisplayed = true
                         end
                     end
                 end
@@ -652,7 +654,8 @@ function script.update(dt)
           if stats.graceTimer > 1.0 then 
                -- Report if valid score exists
                -- Report if valid score exists
-               if stats.activeTime > 0 then
+               -- Report if valid score exists AND it was shown on UI
+               if stats.activeTime > 0 and stats.isDisplayed then
                    -- Parse Leader Index from Key "chaser_leader"
                    local _, _, _, leaderIdxStr = string.find(k, "(%d+)_(%d+)")
                    local leaderIdx = tonumber(leaderIdxStr)
