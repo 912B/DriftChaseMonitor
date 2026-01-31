@@ -202,7 +202,16 @@ local function add3DMessage(carIndex, text, mood)
   
   -- Append Driver Name if possible
   local car = ac.getCar(carIndex)
-  local name = car and car.driverName or ("Car " .. carIndex)
+  local name = "Car " .. carIndex
+  
+  if car then
+      local rawName = car.driverName
+      if type(rawName) == "function" then
+          name = rawName(car)
+      elseif type(rawName) == "string" then
+          name = rawName
+      end
+  end
   
   addDanmaku(name .. ": " .. text, col)
 end
