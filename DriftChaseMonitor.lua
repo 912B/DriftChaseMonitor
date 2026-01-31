@@ -1,5 +1,6 @@
--- Drift Chase Monitor v6.1 (Debug Path)
+-- Drift Chase Monitor v6.3
 -- Server Script compatible
+
 
 -- 配置
 local CONFIG = {
@@ -37,16 +38,14 @@ local GRADE_COLORS = {
     rgbm(0.8, 0, 1, 1)        -- Lvl 5: Purple
 }
 
--- [New] UI Star Colors including Base (Gray)
--- 0: Gray, 1: White, 2: Blue, 3: Green, 4: Gold, 5: Purple
-local UI_STAR_COLORS = {
-    rgbm(0.2, 0.2, 0.2, 0.5), -- Base (Gray)
-    rgbm(1, 1, 1, 1),         -- Lvl 1: White
-    rgbm(0, 0.6, 1, 1),       -- Lvl 2: Blue
-    rgbm(0, 1, 0, 1),         -- Lvl 3: Green
-    rgbm(1, 0.84, 0, 1),      -- Lvl 4: Gold
-    rgbm(0.8, 0, 1, 1)        -- Lvl 5: Purple
-}
+-- [Helper] Get star color (includes gray base for empty stars)
+local function getStarColor(index)
+    if index == 0 then
+        return rgbm(0.2, 0.2, 0.2, 0.5) -- Gray base
+    else
+        return GRADE_COLORS[index]
+    end
+end
 
 -- [New] 弹幕配置 (Danmaku Config) - Adjusted for 3D World Space (Appears as HUD)
 local DANMAKU_CONFIG = {
@@ -374,12 +373,19 @@ local function reportScore(scoreTime, realTime, leaderIndex)
    -- [Refined] Only show Score Time (积分总时长)
    -- [Refined] Only show Score Time (积分总时长)
    local msg = string.format("追走结算: %s色 %d 星 (积分:%.1fs) | %s", grade.name, grade.stars, scoreTime, comment)
-   ac.sendChatMessage(msg)
+   
+   -- [Security] Protected call - some servers may block ac.sendChatMessage
+   local success, err = pcall(function()
+       ac.sendChatMessage(msg)
+   end)
+   if not success then
+       ac.log("DriftChase: Failed to send chat message (server may have disabled it): " .. tostring(err))
+   end
    
    -- [New] Display Result on Leader's Roof (Overhead)
    if leaderIndex then
-       -- Short format for overhead: "🏆 5 Stars (Purple) | Nice!"
-       local shortMsg = string.format("🏆 %d 星 (%s) | %s", grade.stars, grade.name, comment)
+       -- Short format for overhead: "[*] 5 Stars (Purple) | Nice!"
+       local shortMsg = string.format("[*] %d 星 (%s) | %s", grade.stars, grade.name, comment)
        addOverheadMessage(leaderIndex, shortMsg, grade.color)
    end
 end
@@ -763,16 +769,14 @@ function script.drawUI(dt)
                     local grade = getChaseGrade(activeTime)
                     local STAR_Count = 5
                     
-                    -- Determine Colors based on grade.cycle using UI_STAR_COLORS (includes Gray Base)
-                    local colors = UI_STAR_COLORS
-                    
+                    -- Determine Colors based on grade.cycle
                     local cycle = grade.cycle
-                    local baseCol = colors[math.min(cycle + 1, #colors)]     -- Current Cycle Background
-                    local fillCol = colors[math.min(cycle + 2, #colors)]     -- Filling Color
+                    local baseCol = getStarColor(math.min(cycle + 1, #GRADE_COLORS))  -- Current Cycle Background
+                    local fillCol = getStarColor(math.min(cycle + 2, #GRADE_COLORS))  -- Filling Color
                     
                     -- If max level reached
-                    if cycle >= (#colors - 2) then
-                        baseCol = colors[#colors]
+                    if cycle >= (#GRADE_COLORS - 1) then
+                        baseCol = GRADE_COLORS[#GRADE_COLORS]
                         fillCol = rgbm(1, 1, 1, 1) -- Flash White
                     end
                     
@@ -875,9 +879,7 @@ ac.onChatMessage(function(msg, senderName, carIndex)
         senderCar = ac.getCar(carIndex)
     end
     
-    -- Debug Log
-    ac.log("DriftChaseChat: Msg="..tostring(msg).." Sender="..tostring(senderName).." Index="..tostring(carIndex))
-
+    
     -- [New] Check if sender is the focused player
     local sim = ac.getSim()
     local isSelf = (carIndex == sim.focusedCar)
@@ -909,9 +911,9 @@ ac.onChatMessage(function(msg, senderName, carIndex)
     if finalName then 
         -- [Visual] Icons for different message types
         if msg:find("追走结算") then
-             displayText = finalName .. " 🏆 " .. msg
+             displayText = finalName .. " [*] " .. msg
         else
-             displayText = finalName .. " 💬 " .. msg 
+             displayText = finalName .. " > " .. msg 
         end
     end
     
