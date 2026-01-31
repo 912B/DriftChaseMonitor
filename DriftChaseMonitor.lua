@@ -23,8 +23,7 @@ local CONFIG = {
   
   driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
 
-  driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
-}
+
 
 -- [New] 弹幕配置 (Danmaku Config) - Adjusted for 3D World Space (Appears as HUD)
 local DANMAKU_CONFIG = {
@@ -539,13 +538,6 @@ function script.update(dt)
                 -- [MERGED] 玩家专属逻辑: 完美追走
                 if i == sim.focusedCar then
                     local stats = perfectChaseStats[pairKey] or { activeTime = 0, realTime = 0, graceTimer = 0 }
-                    local realDt = ac.getDeltaT()
-                    
-                    local leaderSlip = getSlipAngle(leader)
-                    local angleDiff = math.abs(chaserSlip - leaderSlip)
-                    local isAngleGood = angleDiff < CONFIG.maxAngleDiff
-
-
                     if isAngleGood then
                         -- Calculate Score using Helper
                         local gain = calculateScoreGain(stats.activeTime, dist, realDt)
@@ -569,15 +561,7 @@ function script.update(dt)
                                  stats.realTime = 0
                              end
                         end
-                        else
-                             -- Lost Chase
-                             stats.graceTimer = stats.graceTimer + realDt
-                             if stats.graceTimer > 1.0 then 
-                                 reportScore(stats.activeTime, stats.realTime) -- [New] Report
-                                 stats.activeTime = 0 
-                                 stats.realTime = 0
-                             end
-                        end
+
                     else
                          -- Bad Angle (角度不对)
                          if dist < CONFIG.distMock then
@@ -802,10 +786,7 @@ function script.draw3D(dt)
   updateAndDrawOverhead(dt)
 end
 
--- ==============================================================
 
-
--- ==============================================================
 
 -- [New] 聊天消息接入 (Chat Integration)
 ac.onChatMessage(function(msg, senderName, carIndex)
