@@ -765,10 +765,12 @@ local function updateAndDrawDanmaku(dt)
     ui.beginTransparentWindow("DanmakuLayer", vec2(0,0), uiState.windowSize)
     
     -- [Fix] Apply Font Scale (Base Title font is ~25-30px, so we scale relative to that)
-    local scale = DANMAKU_CONFIG.fontSize / 30
+    local scale = DANMAKU_CONFIG.fontSize / 15 -- Adjusted for Main font (smaller base)
     if ui.setWindowFontScale then ui.setWindowFontScale(scale) end
     
-    ui.pushFont(ui.Font.Title) -- Use larger font base
+    -- [Fix] Use ui.Font.Main for better CJK (Chinese) support
+    -- Title font often lacks Chinese glyphs
+    ui.pushFont(ui.Font.Main)
     
     for i = #DANMAKU_POOL, 1, -1 do
         local item = DANMAKU_POOL[i]
