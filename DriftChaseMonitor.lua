@@ -782,8 +782,6 @@ function script.drawUI(dt)
                     -- So we are filling star index (grade.stars + 1).
                     local activeStarIndex = grade.stars + 1 
                     local activeStarProgress = localTime / 1.0
-                       fillCol = rgbm(1, 1, 1, 1) -- Flash White
-                   end
 
                    ui.pushFont(ui.Font.Title) -- Large stars
                    local starStr = "★"
@@ -880,6 +878,10 @@ ac.onChatMessage(function(msg, senderName, carIndex)
     -- Debug Log
     ac.log("DriftChaseChat: Msg="..tostring(msg).." Sender="..tostring(senderName).." Index="..tostring(carIndex))
 
+    -- [New] Check if sender is the focused player
+    local sim = ac.getSim()
+    local isSelf = (carIndex == sim.focusedCar)
+    
     -- [New] 触发全屏弹幕 (Global Danmaku)
     local danmakuColor = isSelf and rgbm(0.5, 0.35, 0, 1) or rgbm(0.4, 0.4, 0.4, 1)
     
