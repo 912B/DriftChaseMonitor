@@ -205,19 +205,21 @@ local function add3DMessage(carIndex, text, mood)
   local name = "Car " .. carIndex
   
   if car then
-      -- [New] Visibility Check
-      -- Only show "Mockery" (Taunt) messages if the car is actually visible on screen.
+      -- [Fix] Manual Depth Check because render.projectPoint returns vec2
+      local headPos = car.position + vec3(0, 1.0, 0) -- [Restore] Define headPos first
       local camPos = ac.getCameraPosition()
-      local headPos = car.position + vec3(0, 1.0, 0)
+      local camForward = ac.getCameraForward()
+      local toTarget = headPos - camPos
+      local distanceInFront = toTarget:dot(camForward)
+      local isInFront = distanceInFront > 0.5 -- At least 0.5m in front
+      
       local proj = render.projectPoint(headPos)
       
-      -- If behind camera (z < 0) or far off screen (x,y outside reasonable bounds)
-      -- Using a generous buffer (-0.2 to 1.2) to catch cars just entering/leaving view
-      local isVisible = (proj.z > 0) 
-                        and (proj.x > -0.2 and proj.x < 1.2)
-                        and (proj.y > -0.2 and proj.y < 1.2)
+      -- Screen bounds check (normalized 0-1 usually, but allow buffer)
+      local isOnScreen = (proj.x > -0.1 and proj.x < 1.1)
+                     and (proj.y > -0.1 and proj.y < 1.1)
       
-      if not isVisible then return end
+      if not (isInFront and isOnScreen) then return end
 
       local rawName = car.driverName
       if type(rawName) == "function" then
