@@ -44,6 +44,7 @@ local perfectChaseStats = {} -- [New] 完美追走统计 {activeTime, graceTimer
 local driftTimers = {} -- [New] 漂移断开计时器 (Grace Logic)
 
 -- (Face Assets Removed)
+local lastDistances = {}
 local chaseTimers = {} 
 
 -- 工具：HSV 转 RGB
