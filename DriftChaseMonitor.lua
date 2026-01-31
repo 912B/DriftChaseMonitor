@@ -26,19 +26,77 @@ local CONFIG = {
   driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
 }
 
--- [New] 弹幕配置 (Danmaku Config)
+-- [New] 弹幕配置 (Danmaku Config) - Adjusted for 3D World Space (Appears as HUD)
 local DANMAKU_CONFIG = {
-    speed = 200,      -- Pixels per second
-    life = 10.0,      -- Max life (failsafe)
-    fontSize = 60,    -- Font size (Base)
-    lineHeight = 70,  -- Height per line slot 
-    maxLines = 10,    -- Max concurrent lines
+    -- World Units (Meters)
+    depth = 8.0,      -- Distance in front of camera
+    width = 12.0,     -- Virtual screen width (Meters) at depth
+    height = 6.0,     -- Virtual screen height (Meters)
+    
+    speed = 3.5,      -- Meters per second (Traverses 12m in ~3.5s)
+    life = 10.0,      -- Failsafe
+    
+    fontSize = 2.5,   -- Scale Factor for render.debugText (2.0 - 3.0 is large)
+    lineHeight = 1.2, -- Vertical spacing in meters 
+    maxLines = 5,     -- Fewer lines but bigger
+    
     opacity = 1.0,    -- Opacity
 }
 local DANMAKU_POOL = {}
 
--- 状态变量
-local carPopups = {} -- 每辆车的飘字 {text, age, color, offset}
+-- ... (Status Vars remain) ...
+
+local function addDanmaku(text, color)
+    -- Randomize line (Slot 0 to maxLines-1)
+    local lineIdx = math.random(0, DANMAKU_CONFIG.maxLines - 1)
+    
+    -- Jitter speed
+    local speed = DANMAKU_CONFIG.speed + math.random() * 1.0
+    
+    table.insert(DANMAKU_POOL, {
+        text = text,
+        -- Start at Right edge (+Width/2) with slight random delay offset
+        x = (DANMAKU_CONFIG.width / 2) + math.random(0, 2), 
+        -- Top-down layout: Start from top (+Height/2) and go down
+        y = (DANMAKU_CONFIG.height / 3) - (lineIdx * DANMAKU_CONFIG.lineHeight), 
+        speed = speed,
+        color = color or rgbm(1, 1, 1, 1),
+    })
+end
+
+local function updateAndDrawDanmaku(dt)
+    -- [Fix] Fallback if dt is nil
+    dt = dt or ac.getDeltaT()
+    
+    -- 1. Get Camera Basis (World Space)
+    local camPos = ac.getCameraPosition()
+    local camLook = ac.getCameraForward()
+    local camUp = ac.getCameraUp()
+    local camSide = ac.getCameraSide() -- Right vector
+    
+    -- Calculate Center of Virtual Screen
+    -- Center = CamPos + Look * Depth
+    local screenCenter = camPos + camLook * DANMAKU_CONFIG.depth
+    
+    for i = #DANMAKU_POOL, 1, -1 do
+        local item = DANMAKU_POOL[i]
+        
+        -- Update Pos (Move Left: decrease x)
+        item.x = item.x - item.speed * dt
+        
+        -- Calculate 3D World Position for this text
+        -- Use standard basis: Right * x + Up * y
+        local textPos = screenCenter + (camSide * item.x) + (camUp * item.y)
+        
+        -- Draw directly in 3D (No UI loop needed)
+        render.debugText(textPos, item.text, item.color, DANMAKU_CONFIG.fontSize)
+        
+        -- Cleanup if off-screen (Left edge is -Width/2)
+        if item.x < -(DANMAKU_CONFIG.width / 2) - 5 then 
+            table.remove(DANMAKU_POOL, i)
+        end
+    end
+end
 local lastMessageTime = {} -- [New] 记录上一次消息触发时间 {pairKey -> time}
 local perfectChaseStats = {} -- [New] 完美追走统计 {activeTime, graceTimer}
 local driftTimers = {} -- [New] 漂移断开计时器 (Grace Logic)
@@ -612,90 +670,14 @@ function script.draw3D(dt)
             end
       end
   end
+  end
+  
+  -- [New] 3D Danmaku (HUD)
+  updateAndDrawDanmaku(dt)
 end
 
 -- ==============================================================
--- [New] Bilibili Style Danmaku System (弹幕系统)
--- ==============================================================
--- (Config at top)
 
-local function addDanmaku(text, color)
-    local uiState = ac.getUI()
-    local windowWidth = uiState.windowSize.x
-    
-    -- Randomize line (Slot 0 to 9)
-    local lineIdx = math.random(0, DANMAKU_CONFIG.maxLines - 1)
-    
-    -- Jitter speed (150 - 250 px/s)
-    local speed = DANMAKU_CONFIG.speed + math.random(-50, 50)
-    
-    -- Estimate width (render.measureText unavailable in logic thread sometimes, use approx)
-    -- We'll update exact width in draw loop if needed, or just use length * factor
-    local estimatedWidth = #text * (DANMAKU_CONFIG.fontSize * 0.5)
-
-    table.insert(DANMAKU_POOL, {
-        text = text,
-        x = windowWidth, -- Start from right edge
-        y = 50 + (lineIdx * DANMAKU_CONFIG.lineHeight), -- Top offset
-        speed = speed,
-        color = color or rgbm(1, 1, 1, 1),
-        width = estimatedWidth 
-    })
-end
-
-local function updateAndDrawDanmaku(dt)
-    -- [Fix] Fallback if dt is nil
-    dt = dt or ac.getDeltaT()
-    
-    -- [Fix] Revert to UI system because render.text is not available on some CSP versions
-    local uiState = ac.getUI()
-    ui.beginTransparentWindow("DanmakuLayer", vec2(0,0), uiState.windowSize)
-    
-    -- [Fix] Massive Scale for CJK
-    -- Standard font is small (~15px). To get 150px equivalent, we need ~10x scale.
-    -- Let's try explicit 5x first which should be huge.
-    local targetSize = DANMAKU_CONFIG.fontSize or 60
-    local scale = targetSize / 15 
-    if ui.setWindowFontScale then ui.setWindowFontScale(scale) end
-    
-    ui.pushFont(ui.Font.Main) -- Safe CJK font
-    
-    for i = #DANMAKU_POOL, 1, -1 do
-        local item = DANMAKU_POOL[i]
-        
-        -- Update Pos
-        item.x = item.x - item.speed * dt
-        
-        -- Draw using UI (Safe)
-        local pos = vec2(item.x, item.y)
-        local shadowPos = pos + vec2(2, 2)
-        
-        -- Shadow
-        ui.setCursor(shadowPos)
-        ui.textColored(item.text, rgbm(0, 0, 0, 0.8 * DANMAKU_CONFIG.opacity))
-        
-        -- Text
-        ui.setCursor(pos)
-        ui.textColored(item.text, item.color)
-        
-        -- Cleanup
-        if item.x < -1000 then 
-            table.remove(DANMAKU_POOL, i)
-        end
-    end
-    
-    ui.popFont()
-    -- Reset scale? (Window scope handles it usually, but good practice if mixed)
-    if ui.setWindowFontScale then ui.setWindowFontScale(1) end
-    ui.endTransparentWindow()
-end
-
--- Hook back into drawUI (Restore original hook logic)
-local _original_drawUI = script.drawUI
-script.drawUI = function(dt)
-    if _original_drawUI then _original_drawUI(dt) end
-    updateAndDrawDanmaku(dt)
-end
 
 -- ==============================================================
 
