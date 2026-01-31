@@ -297,9 +297,7 @@ local function reportScore(time)
    
    -- [Fix] carIndex might be missing. Use isRemote (true for network cars) to detect spectator mode.
    -- If car is remote, it's not us -> return.
-   if not focusCar or focusCar.isRemote then return end 
-   
-   if sim.isReplay then return end
+   if not focusCar or focusCar.isRemote then return end
 
    -- Calc Logic (Sync with Draw)
    local CYCLE_Time = 5.0
