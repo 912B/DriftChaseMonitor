@@ -731,8 +731,8 @@ local DANMAKU_POOL = {}
 local DANMAKU_CONFIG = {
     speed = 200,      -- Pixels per second
     life = 10.0,      -- Max life (failsafe)
-    fontSize = 45,    -- Font size (Increased from 30)
-    lineHeight = 50,  -- Height per line slot (Increased from 35)
+    fontSize = 90,    -- Font size (Doubled again)
+    lineHeight = 100,  -- Height per line slot (Increased for safety)
     maxLines = 10,    -- Max concurrent lines (top of screen)
     opacity = 1.0,    -- Opacity
 }
@@ -753,7 +753,7 @@ local function addDanmaku(text, color)
         y = 50 + (lineIdx * DANMAKU_CONFIG.lineHeight), -- Top offset
         speed = speed,
         color = color or rgbm(1, 1, 1, 1),
-        width = ui.measureText(text).x -- Pre-calc width
+        width = ui.measureText(text).x * (DANMAKU_CONFIG.fontSize / 30) -- Est width
     })
 end
 
@@ -764,7 +764,11 @@ local function updateAndDrawDanmaku(dt)
     local uiState = ac.getUI()
     ui.beginTransparentWindow("DanmakuLayer", vec2(0,0), uiState.windowSize)
     
-    ui.pushFont(ui.Font.Title) -- Use larger font
+    -- [Fix] Apply Font Scale (Base Title font is ~25-30px, so we scale relative to that)
+    local scale = DANMAKU_CONFIG.fontSize / 30
+    if ui.setWindowFontScale then ui.setWindowFontScale(scale) end
+    
+    ui.pushFont(ui.Font.Title) -- Use larger font base
     
     for i = #DANMAKU_POOL, 1, -1 do
         local item = DANMAKU_POOL[i]
