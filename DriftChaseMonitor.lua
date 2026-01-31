@@ -296,7 +296,7 @@ local activeTarget = {
 }
 
 -- [New] Report Score Helper
-local function reportScore(scoreTime, realTime)
+local function reportScore(scoreTime, realTime, leaderIndex)
    -- [Refined] Only report Blue Star or above (> 5s score time)
    if scoreTime < 5.0 then return end
    
@@ -340,8 +340,24 @@ local function reportScore(scoreTime, realTime)
    -- Build Message
    -- Build Message
    -- [Refined] Only show Score Time (积分总时长)
+   -- [Refined] Only show Score Time (积分总时长)
    local msg = string.format("追走结算: %s色 %d 星 (积分:%.1fs) | %s", displayColor, totalStars, scoreTime, comment)
    ac.sendChatMessage(msg)
+   
+   -- [New] Display Result on Leader's Roof (Overhead)
+   if leaderIndex then
+       -- Determine simple color for 3D text
+       local col = rgbm(1, 1, 1, 1) -- Default White
+       if colorKey == "Blue" then col = rgbm(0, 0.6, 1, 1)
+       elseif colorKey == "Green" then col = rgbm(0, 1, 0, 1)
+       elseif colorKey == "Gold" then col = rgbm(1, 0.84, 0, 1)
+       elseif colorKey == "Purple" then col = rgbm(0.8, 0, 1, 1)
+       end
+       
+       -- Short format for overhead: "🏆 5 Stars (Purple) | Nice!"
+       local shortMsg = string.format("🏆 %d 星 (%s) | %s", totalStars, displayColor, comment)
+       addOverheadMessage(leaderIndex, shortMsg, col)
+   end
 end
 
 -- [New] Scoring Helper Function
@@ -559,7 +575,7 @@ function script.update(dt)
                              -- Lost Chase (Dist > Mock)
                              stats.graceTimer = stats.graceTimer + realDt
                              if stats.graceTimer > 1.0 then 
-                                 reportScore(stats.activeTime, stats.realTime) -- [New] Report
+                                 reportScore(stats.activeTime, stats.realTime, j) -- [New] Report with Leader Index
                                  stats.activeTime = 0 
                                  stats.realTime = 0
                              end
@@ -575,7 +591,7 @@ function script.update(dt)
                              -- Range Bad -> DECAY (Lost Chase)
                              stats.graceTimer = stats.graceTimer + realDt
                              if stats.graceTimer > 1.0 then 
-                                 reportScore(stats.activeTime, stats.realTime) -- [New] Report
+                                 reportScore(stats.activeTime, stats.realTime, j) -- [New] Report with Leader Index
                                  stats.activeTime = 0 
                                  stats.realTime = 0
                              end
@@ -635,8 +651,12 @@ function script.update(dt)
           stats.graceTimer = stats.graceTimer + realDt
           if stats.graceTimer > 1.0 then 
                -- Report if valid score exists
+               -- Report if valid score exists
                if stats.activeTime > 0 then
-                   reportScore(stats.activeTime, stats.realTime)
+                   -- Parse Leader Index from Key "chaser_leader"
+                   local _, _, _, leaderIdxStr = string.find(k, "(%d+)_(%d+)")
+                   local leaderIdx = tonumber(leaderIdxStr)
+                   reportScore(stats.activeTime, stats.realTime, leaderIdx)
                end
                -- Remove from list
                perfectChaseStats[k] = nil
