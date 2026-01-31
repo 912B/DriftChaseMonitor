@@ -842,10 +842,25 @@ ac.onChatMessage(function(msg, senderName, carIndex)
     local danmakuColor = isSelf and rgbm(1, 0.8, 0, 1) or rgbm(1, 1, 1, 1)
     
     -- 3. 构造显示名称 (Priority: Car.driverName > senderName > "Unknown")
+    -- 3. 构造显示名称 (Priority: Car.driverName > senderName > "Unknown")
     local finalName = senderName
-    if senderCar and senderCar.driverName then
-        finalName = senderCar.driverName
+    if senderCar then
+        -- [Fix] Robust Name Fetching (handle function vs string vs nil)
+        local rawName = senderCar.driverName
+        if type(rawName) == "function" then
+            finalName = rawName(senderCar) -- Try method call style or just function
+        elseif type(rawName) == "string" then
+            finalName = rawName
+        end
     end
+    
+    -- Normalize to string
+    if type(finalName) ~= "string" then
+        finalName = tostring(finalName)
+    end
+    
+    -- Filter out "nil" string
+    if finalName == "nil" then finalName = "Driver " .. (carIndex or "?") end
     
     local displayText = msg
     if finalName then 
