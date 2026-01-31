@@ -231,7 +231,8 @@ local function add3DMessage(carIndex, text, mood)
       end
   end
   
-  addDanmaku(name .. ": " .. text, col)
+  -- [Visual] Use Flash icon for Taunt/Mockery
+  addDanmaku(name .. " ⚡ " .. text, col)
 end
 
 -- 活跃的追踪目标 (用于 UI 显示)
@@ -727,7 +728,12 @@ ac.onChatMessage(function(msg, senderName, carIndex)
     
     local displayText = msg
     if finalName then 
-        displayText = finalName .. ": " .. msg 
+        -- [Visual] Icons for different message types
+        if msg:find("追走结算") then
+             displayText = finalName .. " 🏆 " .. msg
+        else
+             displayText = finalName .. " 💬 " .. msg 
+        end
     end
     
     addDanmaku(displayText, danmakuColor)
