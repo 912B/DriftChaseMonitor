@@ -79,10 +79,11 @@ local MSGS = {
     GOOD = { "我是你的影子!", "胶水做的车!", "窒息般的压迫感!", "完美的同步!" }
   },
   RESULTS_SUFFIX = {
-    " 就这？", " 我还没出力呢。", " 稍微认真了一点点。", 
-    " 也就是有手就行。", " 甚至还能喝口水。", " 感觉不如...自动驾驶。",
-    " 下次记得踩油门。", " 这是你的极限吗？", " 建议去开买菜车。",
-    " 汗都没出。", " 甚至想倒车入库。", " 你的轮胎是租的吗？"
+       White = { "完全跟不住啊!", "这是在画龙吗?", "刚才网卡了...", "被套圈了...", "这领跑太飘忽了!", "轮胎没热!", "差点睡着了..." },
+       Blue = { "刚才节奏乱了...", "距离感失灵了!", "勉强能看到尾灯!", "差点被甩掉!", "这图太滑了!", "刚才手滑了一下!", "还没有进入状态!" },
+       Green = { "勉强跟住了!", "节奏还行!", "下次贴更近!", "普通发挥!", "稍微认真了一点!", "一般般吧!", "还可以更近!" },
+       Gold = { "这就叫贴贴!", "咬得死死的!", "节奏完美!", "别想逃出我的掌心!", "后视镜里全是我!", "这就叫追走!", "不仅快还稳!" },
+       Purple = { "我是你的影子!", "胶水做的车!", "完全同步!", "想甩掉我？没门!", "窒息般的压迫感!", "你的动作我都会!", "请叫我复制忍者!" }
   }
 }
 
@@ -239,32 +240,38 @@ local function Logic_FinishChase(key, stats, leaderName)
     -- 计算星级颜色 (与 Render_StarRating 逻辑一致)
     local starsStr = ""
     local colorName = "白"
+    local colorKey = "White"
     
     if score >= 625 then
         colorName = "紫"
+        colorKey = "Purple"
         starsStr = "★★★★★" -- 简化显示，不像渲染那样精细计算多颗星
     elseif score >= 125 then
         colorName = "金"
+        colorKey = "Gold"
         starsStr = "★★★★"
     elseif score >= 25 then
         colorName = "绿"
+        colorKey = "Green"
         starsStr = "★★★"
     elseif score >= 5 then
         colorName = "蓝"
+        colorKey = "Blue"
         starsStr = "★★"
     else
         colorName = "白"
+        colorKey = "White"
         starsStr = "★"
     end
     
     -- 仅仅发送聊天消息 (Chat Message)
     -- 格式: [追走结算] 齐驰上树 (Car 0) -> 52分 (绿星 ★★★) 阴阳怪气后缀
     local suffix = ""
-    if MSGS.RESULTS_SUFFIX then
-        suffix = getRandom(MSGS.RESULTS_SUFFIX)
+    if MSGS.RESULTS_SUFFIX and MSGS.RESULTS_SUFFIX[colorKey] then
+        suffix = getRandom(MSGS.RESULTS_SUFFIX[colorKey])
     end
     
-    local msg = string.format("追走结束! 获得: %d分 (%s色 %s)%s", score, colorName, starsStr, suffix)
+    local msg = string.format("追走结束! 获得: %d分 (%s色 %s) %s", score, colorName, starsStr, suffix)
     ac.sendChatMessage(msg)
 end
 
