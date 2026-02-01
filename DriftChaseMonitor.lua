@@ -1,922 +1,537 @@
--- Drift Chase Monitor v6.3
--- Server Script compatible
+-- DriftChaseMonitor.lua
+-- REWRITE: 2026-01-31
+-- STATUS: PRODUCTION READY
 
-
--- 配置
+-- ============================================================================
+-- 1. CONFIGURATION (配置层)
+-- ============================================================================
 local CONFIG = {
-  minDriftAngle = 10, -- 最小漂移角度
-  minSpeed = 20,      -- 最小速度
-  distPraise = 2,   -- TIER 3: 贴贴 (赞扬/阴阳)
-  distNormal = 5.0,   -- Normal Chase Range (Accumulates slowly)
-  distMock = 10.0,    -- TIER 2: 嘲讽 (Synced with Scoring Range)
-  distProvoke = 40.0, -- TIER 1: 挑衅 (Scope for Danmaku Logic)
+  -- 漂移阈值
+  minSpeed = 20.0,       -- 最低速度 km/h
+  minDriftAngle = 15.0,  -- 最小漂移角度
+  driftGraceTime = 0.5,  -- 漂移中断容忍时间 (秒)
   
-  maxAngleDiff = 35, -- [New] 最大角度差 (超过此值不积分) - Relaxed from 20 to 35 for better feel
-  starDuration = 1.0, -- [New] 单颗星星所需时间 (秒) -> User requested harder, let's keep 1.0 logic first but multiplier controls it? 
-  -- No, let's set base duration. User said "Too simple", slowing it down is good.
-  -- Let's set it to 2.0s per star in logic.
+  -- 追走阈值
+  maxAngleDiff = 30.0,   -- 最大角度差 (同步要求)
+  maxDistance = 45.0,    -- 最大距离 (米)
   
-  messageLife = 5.0,  -- 消息停留时间
-
-  warmupTime = 2.0,   -- 预热时间 (秒)
+  -- 区域判定 (米)
+  distPraise = 3.5,      -- Tier 3 (贴脸)
+  distNormal = 10.0,     -- Tier 2 (正常)
+  distMock = 20.0,       -- Tier 1 (有距离但还没丢)
+  distProvoke = 45.0,    -- Tier 0 (丢了，或者太远)
   
-  messageCooldown = 15.0, -- [New] 消息冷却时间 (秒) - 防止刷屏
-  
-  driftGraceTime = 0.5, -- [New] 漂移状态维持时间 (秒) - 解决折身时角度归零导致中断的问题
+  -- 计时器
+  warmupTime = 2.0,      -- 锁定目标前的预热时间 (秒)
+  messageCooldown = 8.0, -- 聊天消息冷却时间 (秒)
+  comboGrace = 2.0,      -- 连击/UI 保持的容忍时间 (秒)
 }
 
-
-
--- [New] Grade Colors (Global)
-local GRADE_COLOR_NAMES = { "White", "Blue", "Green", "Gold", "Purple" }
-local GRADE_DISPLAY_MAP = { White="白", Blue="蓝", Green="绿", Gold="金", Purple="紫" }
-local GRADE_COLORS = {
-    rgbm(1, 1, 1, 1),         -- Lvl 1: White
-    rgbm(0, 0.6, 1, 1),       -- Lvl 2: Blue
-    rgbm(0, 1, 0, 1),         -- Lvl 3: Green
-    rgbm(1, 0.84, 0, 1),      -- Lvl 4: Gold
-    rgbm(0.8, 0, 1, 1)        -- Lvl 5: Purple
+local UI_CONFIG = {
+  barWidth = 200,
+  barHeight = 12,
+  starSize = 25,
+  pos = vec2(100, 100)
 }
 
--- [Helper] Get star color (includes gray base for empty stars)
-local function getStarColor(index)
-    if index == 0 then
-        return rgbm(0.2, 0.2, 0.2, 0.5) -- Gray base
-    else
-        return GRADE_COLORS[index]
-    end
-end
+local COLORS = {
+  White  = rgbm(0.5, 0.5, 0.5, 1), -- 0.5 防止HDR过曝
 
--- [New] 弹幕配置 (Danmaku Config) - Adjusted for 3D World Space (Appears as HUD)
-local DANMAKU_CONFIG = {
-    -- World Units (Meters)
-    depth = 8.0,      -- Distance in front of camera
-    width = 12.0,     -- Virtual screen width (Meters) at depth
-    height = 6.0,     -- Virtual screen height (Meters)
-    
-    speed = 0.25,      -- Meters per second (Limit max speed for readability)
-    life = 60.0,      -- Extended life for very slow speed
-    
-    fontSize = 2.5,   -- Scale Factor for render.debugText (2.0 - 3.0 is large)
-    lineHeight = 1.2, -- Vertical spacing in meters 
-    maxLines = 5,     -- Fewer lines but bigger
-    
-    opacity = 1.0,    -- Opacity
+  Blue   = rgbm(0.2, 0.6, 1.0, 1),
+  Green  = rgbm(0.2, 0.9, 0.4, 1),
+  Gold   = rgbm(1.0, 0.8, 0.1, 1),
+  Purple = rgbm(0.8, 0.3, 0.9, 1),
+  Red    = rgbm(1.0, 0.2, 0.2, 1)
 }
-local DANMAKU_POOL = {}
 
--- ... (Status Vars remain) ...
+local GRA_CONF = {
+  { threshold = 0,   key = "White",  color = COLORS.White,  name = "白" },
+  { threshold = 5,   key = "Blue",   color = COLORS.Blue,   name = "蓝" },
+  { threshold = 25,  key = "Green",  color = COLORS.Green,  name = "绿" },
+  { threshold = 125, key = "Gold",   color = COLORS.Gold,   name = "金" },
+  { threshold = 625, key = "Purple", color = COLORS.Purple, name = "紫" }
+}
 
-local function addDanmaku(text, color)
-    -- Randomize line (Slot 0 to maxLines-1)
-    local lineIdx = math.random(0, DANMAKU_CONFIG.maxLines - 1)
-    
-    -- Jitter speed
-    local speed = DANMAKU_CONFIG.speed + math.random() * 1.0
-    
-    table.insert(DANMAKU_POOL, {
-        text = text,
-        -- Start at Right edge (+Width/2) with slight random delay offset
-        x = (DANMAKU_CONFIG.width / 2) + math.random(0, 2), 
-        -- Top-down layout: Start from top (+Height/2) and go down
-        y = (DANMAKU_CONFIG.height / 3) - (lineIdx * DANMAKU_CONFIG.lineHeight), 
-        speed = speed,
-        color = color or rgbm(0.4, 0.4, 0.4, 1),
-    })
-end
-
-local function updateAndDrawDanmaku(dt)
-    -- [Fix] Fallback if dt is nil
-    dt = dt or ac.getDeltaT()
-    
-    -- 1. Get Camera Basis (World Space)
-    local camPos = ac.getCameraPosition()
-    local camLook = ac.getCameraForward()
-    local camUp = ac.getCameraUp()
-    local camSide = ac.getCameraSide() -- Right vector
-    
-    -- Calculate Center of Virtual Screen
-    -- Center = CamPos + Look * Depth
-    local screenCenter = camPos + camLook * DANMAKU_CONFIG.depth
-    
-    for i = #DANMAKU_POOL, 1, -1 do
-        local item = DANMAKU_POOL[i]
-        
-        -- Update Pos (Move Left: decrease x)
-        item.x = item.x - item.speed * dt
-        
-        -- Calculate 3D World Position for this text
-        -- Use standard basis: Right * x + Up * y
-        local textPos = screenCenter + (camSide * item.x) + (camUp * item.y)
-        
-        -- Draw directly in 3D (No UI loop needed)
-        render.debugText(textPos, item.text, item.color, DANMAKU_CONFIG.fontSize)
-        
-        -- Cleanup if off-screen (Left edge is -Width/2)
-        if item.x < -(DANMAKU_CONFIG.width / 2) - 5 then 
-            table.remove(DANMAKU_POOL, i)
-        end
-    end
-end
-local lastMessageTime = {} -- [New] 记录上一次消息触发时间 {pairKey -> time}
-local perfectChaseStats = {} -- [New] 完美追走统计 {activeTime, graceTimer}
-local driftTimers = {} -- [New] 漂移断开计时器 (Grace Logic)
-
--- (Face Assets Removed)
-local lastDistances = {}
-local chaseTimers = {} 
-
--- [New] Overhead Messages System
-local overheadMessages = {} -- Key: carIndex, Value: { text, color, age, duration }
-
-local function addOverheadMessage(carIndex, text, color)
-    overheadMessages[carIndex] = {
-        text = text,
-        color = color,
-        age = 0,
-        duration = CONFIG.messageLife
-    }
-end
-
-local function updateAndDrawOverhead(dt)
-    dt = dt or ac.getDeltaT()
-    local sim = ac.getSim()
-    local camPos = ac.getCameraPosition()
-    
-    for carIndex, msg in pairs(overheadMessages) do
-        msg.age = msg.age + dt
-        if msg.age > msg.duration then
-            overheadMessages[carIndex] = nil
-        else
-            local car = ac.getCar(carIndex)
-            if car then
-                -- Position: Above Car + slight bobbing or rise?
-                -- Just static overhead for readability
-                local headPos = car.position + vec3(0, 1.8, 0) 
-                
-                -- Fade out
-                local alpha = 1.0
-                if msg.age > (msg.duration - 1.0) then
-                    alpha = (msg.duration - msg.age)
-                end
-                
-                -- Scale by distance? render.debugText handles perspective, 
-                -- but we might want it slightly larger.
-                local dist = (headPos - camPos):length()
-                local scale = math.clamp(50.0 / dist, 1.0, 3.0) 
-                -- Logic: close = 1.0, far = 3.0? No, debugText shrinks with distance.
-                -- We want to counteract shrinking slightly or just let it be?
-                -- render.debugText(pos, text, color, scale)
-                -- Standard scale 1.0 is fine for debugText usually.
-                
-                msg.color.mult = alpha -- Apply fade
-                
-                render.debugText(headPos, msg.text, msg.color, 1.2)
-            end
-        end
-    end
-end 
-
--- 工具：HSV 转 RGB
-local function hsvToRgb(h, s, v, a)
-  local r, g, b
-  local i = math.floor(h * 6)
-  local f = h * 6 - i
-  local p = v * (1 - s)
-  local q = v * (1 - f * s)
-  local t = v * (1 - (1 - f) * s)
-  i = i % 6
-  if i == 0 then r, g, b = v, t, p
-  elseif i == 1 then r, g, b = q, v, p
-  elseif i == 2 then r, g, b = p, v, t
-  elseif i == 3 then r, g, b = p, q, v
-  elseif i == 4 then r, g, b = t, p, v
-  elseif i == 5 then r, g, b = v, p, q
-  end
-  return rgbm(r, g, b, a or 1)
-end
-
--- 工具：获取漂移角度
-local function getSlipAngle(car)
-  local velocity = car.velocity
-  local speed = velocity:length()
-  if speed < 1 then return 0 end
-  
-  local forward = car.look
-  local vDir = velocity:clone():normalize()
-  local dot = math.clamp(forward:dot(vDir), -1, 1)
-  return math.deg(math.acos(dot))
-end
-
-
-local MSG_POOL = {
-  -- (A) 后车视角 (Chaser -> Leader)
-  -- TIER 3: 贴贴 (<3m) - 阴阳/赞扬
-  FRONT_TIER3 = {
-    "让让弟弟!", "这就是领跑?", "小心屁股！", "贴贴!", "亲一个!",
-    "甚至想推你!", "别挡道!", "太近了喂!", "真爱粉!", "胶水做的?",
-    "这种距离要怀孕了!", "甚至想帮你推车!", "您是NPC吗?", "这屁股我收下了!",
-    "还没断奶吗?", "回家喝奶去吧!", "这种水平也敢领跑?", "是不是在梦游?"
+local MSGS = {
+  CHASER_TO_LEADER = {
+    TIER3 = { "让让弟弟!", "贴贴!", "这屁股我收下了!" },
+    TIER2 = { "开太慢了!", "在散步?", "给点力啊!" },
+    LOST  = { "迷路了?", "人呢?", "回家练练吧!" }
   },
-  -- TIER 2: 嘲讽 (3-10m) - 施压
-  FRONT_TIER2 = { 
-    "开太慢了!", "在散步?", "给点力啊!", "算了，你自己跑吧", "这速度认真的?",
-    "杂鱼杂鱼", "我闭着眼都能追!", "路太宽了吗?", "甚至想按喇叭!",
-    "奶奶买菜都比你快!", "您在热身吗?", "倒车都能追!", "你知道油门在哪吗？",
-    "轮椅都比你快!", "驾照是买的吗?", "前面是红灯吗?", "是不是没加油?"
+  LEADER_TO_CHASER = {
+    TIER3 = { "别亲我屁股!", "负距离!", "真爱粉!" },
+    TIER2 = { "这就粘上了?", "跟紧点弟弟!", "想超车吗?" },
+    TIER1 = { "来追我呀!", "闻闻尾气!", "就这点本事?" }
   },
-  -- TIER 1: 挑衅 (10-40m) - 远距离
-  FRONT_TIER1 = { 
-    "快点啊!", "前面有人吗?", "要推头了?", "能不能行?", "我来了!", 
-    "小心屁股!", "就在你后面!", "追上来了!", "有种你等我!",
-    "前面是安全车吗?", "我要开始认真了!", "准备好被超车了吗?", "别以为能跑掉!"
-  },
-  
-  -- (B) 前车视角 (Leader -> Chaser)
-  -- TIER 3: 贴贴 (<3m) - 惊恐/阴阳
-  REAR_TIER3 = { 
-    "别亲我屁股!", "杂鱼杂鱼!", "你没有刹车吗?", "太近了喂!", "想同归于尽?", 
-    "负距离!", "车漆要蹭掉了!", "真爱粉!", "胶水做的?",
-    "甚至想上我的车?", "在此地不要走动!", "这就是你的极限?", "想看我底盘?",
-    "想当我的挂件吗?", "别爱我没结果!", "是不是想碰瓷?", "保持社交距离!"
-  },
-  -- TIER 2: 嘲讽 (3-10m) - 嘲笑
-  REAR_TIER2 = { 
-    "这就粘上了?", "通过考核!", "想超车吗?", "跟紧点弟弟!", "杂鱼杂鱼!",
-    "不仅快还稳!", "这种距离也没谁了!", "你是牛皮糖吗?", "甚至想给你颁奖!",
-    "还不赖嘛!", "稍微有点意思!", "别跟丢了哦!", "吃我尾气吧!", "只能看到尾灯吗?"
-  },
-  -- TIER 1: 挑衅 (10-40m) - 勾引
-  REAR_TIER1 = { 
-    "来追我呀!", "闻闻尾气!", "就这点本事?", "靠近点!", "太慢了!", 
-    "这就虚了?", "甚至看不到灯!", "油门踩进油箱里!", "我在前面!",
-    "看得到我尾灯算我输!", "需要导航吗?", "不仅慢还菜!", "是不是迷路了?", "我在终点等你!"
-  },
-  
-  -- LOST (通用)
-  LOST = { 
-    "迷路了?", "人呢?", "驾照买的?", "我在终点等你", "回家练练吧!",
-    "完全跟不住!", "这就放弃了?", "甚至看不到尾灯...", "慢得像蜗牛!",
-    "甚至以为你掉线了!", "打个车过来吧!", "回家练练吧!", "是不是睡着了?",
-    "完全是两个世界的车!", "甚至连影子都看不到了!", "再练个十年吧!"
+  RESULTS = {
+    FAIL = { "完全跟不住啊!", "这是在画龙吗?", "轮胎没热!" },
+    OK   = { "勉强跟住了!", "普通发挥!", "还可以更近!" },
+    GOOD = { "我是你的影子!", "胶水做的车!", "窒息般的压迫感!" }
   }
 }
 
--- 随机获取文本
-local function getRandomMsg(pool)
+-- ============================================================================
+-- 2. STATE MANAGEMENT (状态层)
+-- ============================================================================
+local State = {
+  driftTimers = {},
+  isDrifting = {}, 
+  chaseStats = {}, 
+  activeTarget = nil, 
+  danmakuQueue = {},
+  overheadQueue = {},
+}
+
+-- ============================================================================
+-- 3. UTILITIES (工具层)
+-- ============================================================================
+local function getSlipAngle(car)
+  local v = car.velocity
+  if v:length() < 1 then return 0 end
+  local fwd = car.look
+  local vDir = v:clone():normalize()
+  local dot = math.clamp(fwd:dot(vDir), -1, 1)
+  return math.deg(math.acos(dot))
+end
+
+local function getRandom(pool)
   return pool[math.random(#pool)]
 end
 
--- [New] 添加 3D 飘字 -> 改为发送到 3D 弹幕 (Redirect to Danmaku)
-local function add3DMessage(carIndex, text, mood)
-  -- [Fix] Reduce brightness Drastically to avoid "Glow/Bloom"
-  -- Night Mode Safe: Values around 0.3 - 0.4
-  local col = rgbm(0.4, 0.4, 0.4, 1)
-  if mood == 2 then col = rgbm(0.4, 0.3, 0, 1) -- Gold (Dimmed)
-  elseif mood == 1 then col = rgbm(0, 0.4, 0.4, 1) -- Cyan (Dimmed)
-  elseif mood == 3 then col = rgbm(0.4, 0.15, 0.15, 1) -- Red (Dimmed)
-  elseif mood == 4 then col = rgbm(0, 0.4, 0, 1)   -- Green (Chat - Dimmed)
-  end
-  
-  -- Append Driver Name if possible
-  local car = ac.getCar(carIndex)
-  local name = "Car " .. carIndex
-  
-  if car then
-      -- [New] Distance Filter: Only show danmaku if car is within interaction range (Provoke Range)
-      -- This avoids spam from distant battles.
-      local sim = ac.getSim()
-      local focusPos = ac.getCar(sim.focusedCar).position
-      if math.distance(car.position, focusPos) > CONFIG.distProvoke then return end
+-- ============================================================================
+-- 4. LOGIC MODULES (逻辑模块层)
+-- ============================================================================
 
-      -- [Fix] Manual Depth Check because render.projectPoint returns vec2
-      local headPos = car.position + vec3(0, 1.0, 0) -- [Restore] Define headPos first
-      local camPos = ac.getCameraPosition()
-      local camForward = ac.getCameraForward()
-      local toTarget = headPos - camPos
-      local distanceInFront = toTarget:dot(camForward)
-      local isInFront = distanceInFront > 0.5 -- At least 0.5m in front
-      
-      -- For overhead, we still probably want to avoid generating if totally behind, 
-      -- but strictly "onScreen" check is less critical since render.debugText handles clipping.
-      -- Keeping the logic to prevent spam processing for invisible cars is good.
-      if not isInFront then return end
-
-      -- Note: Removed name prefix as position identifies the car
-  end
-  
-  -- [Visual] Overhead Message (Taunt)
-  addOverheadMessage(carIndex, text, col)
-end
-
--- 活跃的追踪目标 (用于 UI 显示)
-local activeTarget = {
-    index = -1,
-    dist = 0,
-    stats = nil
-}
-
--- Helper: Get Chase Grade (Color, Stars) from Time
-local function getChaseGrade(seconds)
-    local CYCLE_Time = 5.0
-    local cycle = math.floor(seconds / CYCLE_Time)
-    
-    local colorIdx = math.clamp(cycle + 1, 1, #GRADE_COLOR_NAMES)
-    local colorKey = GRADE_COLOR_NAMES[colorIdx]
-    
-    -- Stars (0-4 per cycle)
-    local cycleStars = math.floor(seconds % 5)
-
-    -- Return standardized grade object
-    return {
-        key = colorKey,
-        name = GRADE_DISPLAY_MAP[colorKey] or "白",
-        color = GRADE_COLORS[colorIdx],
-        stars = cycleStars,
-        cycle = cycle,
-        totalStars = math.floor(seconds)
-    }
-end
-
--- [New] Report Score Helper
-local function reportScore(scoreTime, realTime, leaderIndex)
-   -- [Refined] Only report Blue Star or above (> 5s score time)
-   if scoreTime < 5.0 then return end
-   
-   -- Security Check: 
-   -- 1. Spectator: Don't send chat if I am just watching.
-   -- 2. Replay: Don't send chat in replay.
-   local sim = ac.getSim()
-   local focusCar = ac.getCar(sim.focusedCar)
-   
-   -- [Fix] carIndex might be missing. Use isRemote (true for network cars) to detect spectator mode.
-   -- If car is remote, it's not us -> return.
-   if not focusCar or focusCar.isRemote then return end
-
-   -- [New] Sarcastic Comments for Results (Player Boasting/Excuses) -> [Refined] Tsuiso Style (Sync & Proximity)
-   local RESULT_COMMENTS = {
-       White = { "完全跟不住啊!", "这是在画龙吗?", "刚才网卡了...", "被套圈了...", "这领跑太飘忽了!", "轮胎没热!", "差点睡着了..." },
-       Blue = { "刚才节奏乱了...", "距离感失灵了!", "勉强能看到尾灯!", "差点被甩掉!", "这图太滑了!", "刚才手滑了一下!", "还没有进入状态!" },
-       Green = { "勉强跟住了!", "节奏还行!", "下次贴更近!", "普通发挥!", "稍微认真了一点!", "一般般吧!", "还可以更近!" },
-       Gold = { "这就叫贴贴!", "咬得死死的!", "节奏完美!", "别想逃出我的掌心!", "后视镜里全是我!", "这就叫追走!", "不仅快还稳!" },
-       Purple = { "我是你的影子!", "胶水做的车!", "完全同步!", "想甩掉我？没门!", "窒息般的压迫感!", "你的动作我都会!", "请叫我复制忍者!" }
-   }
-
-   -- Calc Logic (Sync with Draw)
-   local grade = getChaseGrade(scoreTime)
-   
-   -- [New] Pick random sarcastic comment
-   local comments = RESULT_COMMENTS[grade.key] or RESULT_COMMENTS.White
-   local comment = comments[math.random(#comments)]
-   
-   -- Build Message
-   -- [Refined] Only show Score Time (积分总时长)
-   -- [Refined] Only show Score Time (积分总时长)
-   local msg = string.format("追走结算: %s色 %d 星 (积分:%.1fs) | %s", grade.name, grade.stars, scoreTime, comment)
-   
-   -- [Security] Protected call - some servers may block ac.sendChatMessage
-   local success, err = pcall(function()
-       ac.sendChatMessage(msg)
-   end)
-   if not success then
-       ac.log("DriftChase: Failed to send chat message (server may have disabled it): " .. tostring(err))
-   end
-   
-   -- [New] Display Result on Leader's Roof (Overhead)
-   if leaderIndex then
-       -- Short format for overhead: "[*] 5 Stars (Purple) | Nice!"
-       local shortMsg = string.format("[*] %d 星 (%s) | %s", grade.stars, grade.name, comment)
-       addOverheadMessage(leaderIndex, shortMsg, grade.color)
-   end
-end
-
--- [New] Scoring Helper Function
--- Encapsulates Geometric Difficulty & Distance Logic
-local function calculateScoreGain(currentActiveTime, dist, realDt)
-    -- Levels based on 5-second intervals (5 stars per level if base is 1s)
-    local currentLevel = math.floor(currentActiveTime / 5)
-    
-    -- Geometric Penalty: 5^Level
-    -- Level 0 (0-5s):   1.0
-    -- Level 1 (5-10s):  0.2   (1/5)
-    -- Level 2 (10-15s): 0.04  (1/25)
-    -- Level 3 (15-20s): 0.008 (1/125)
-    local levelPenalty = 1.0 / math.pow(5.0, currentLevel)
-    
-    local scoreGain = 0
-    
-    if dist < CONFIG.distPraise then
-        -- Perfect Zone (<3.5m): Base 1.0 (1s real = 1s score)
-        scoreGain = realDt * 1.0 * levelPenalty
-    elseif dist < CONFIG.distNormal then
-        -- Normal Zone (3.5-10m): Base 0.2 (5s real = 1s score)
-        scoreGain = realDt * 0.2 * levelPenalty
-    end
-    
-    return scoreGain
-end
-
--- 主更新逻辑 (Global Loop)
-function script.update(dt)
-  local realDt = ac.getDeltaT() -- [Fix] Define realDt for global use
-  local updatedStats = {} -- [Fix] Track focused car stats updates for cleanup
-  -- 2. 更新 3D 粒子 (已移除)
-  
-  -- 3. 更新 3D 飘字 (已重定向到弹幕，此处移除)
-
-
-  -- 4. 全局漂移追走检测 (N * N)
-  local sim = ac.getSim()
-  local player = ac.getCar(sim.focusedCar)
-  
-  -- [New] 预计算所有车辆的漂移状态 (处理 Hysteresis)
-  local driftStates = {}
+local function Logic_UpdateDrift(sim, realDt)
   for i = 0, sim.carsCount - 1 do
-      local car = ac.getCar(i)
-      if car and car.isConnected then
-          local slip = getSlipAngle(car)
-          local isRawDrifting = slip > CONFIG.minDriftAngle and car.speedKmh > CONFIG.minSpeed
-          
-          if isRawDrifting then
-              driftTimers[i] = 0
-          else
-              driftTimers[i] = (driftTimers[i] or 0) + realDt
-          end
-          
-          -- 只要 grace timer 在允许范围内，就认为还在漂移 (即使 switch 中)
-          driftStates[i] = driftTimers[i] < CONFIG.driftGraceTime
-      else
-          driftStates[i] = false
-      end
-  end
-
-  -- 重置本帧最佳目标
-  local frameBestTarget = nil
-  local minFrontDist = 99999
-  
-  -- 遍历所有可能的追击者 (Chaser)
-  for i = 0, sim.carsCount - 1 do 
-    local chaser = ac.getCar(i)
-    if chaser and chaser.isConnected then
-       -- 检查 Chaser 状态
-       local chaserSlip = getSlipAngle(chaser) -- (Still needed for angleDiff)
-       local isChaserDrifting = driftStates[i]
-       
-       -- 遍历前车 (Leader)
-       for j = 0, sim.carsCount - 1 do 
-         if i ~= j then
-            local leader = ac.getCar(j)
-            if leader and leader.isConnected then
-                local rawDist = math.distance(chaser.position, leader.position)
-                -- [Refactor] 统一使用补偿后的距离 (减去 2.0m 车宽)
-                local dist = math.max(0, rawDist - 2.0)
-                
-                -- 判断前后关系: Chaser 必须在 Leader 后方/侧后方
-                local dirToChaser = (chaser.position - leader.position):normalize()
-                local isBehind = leader.look:dot(dirToChaser) < 0.2
-                
-                -- Key for this pair
-                local pairKey = i .. "_" .. j
-                
-                -- 读取上一帧状态
-                local lastTier = lastDistances[pairKey] or 0
-                local wasLocked = lastDistances[pairKey .. "_locked"] or false
-                local currentTier = 0
-                
-                -- Use cached drift state
-                local isLeaderDrifting = driftStates[j]
-                
-                -- [Fix] Speed Check: 
-                -- Must be moving faster than minSpeed (20km/h) to count as chase
-                -- Avoids parked cars triggering "Good Chase"
-                local chaserSpeed = chaser.velocity:length() * 3.6
-                local leaderSpeed = leader.velocity:length() * 3.6
-                local isMovingFastEnough = (chaserSpeed > CONFIG.minSpeed) and (leaderSpeed > CONFIG.minSpeed)
-                
-                -- [Fix] Calculate Angle Info HERE so it is available for both blocks
-                local leaderSlip = getSlipAngle(leader)
-                local angleDiff = math.abs(chaserSlip - leaderSlip)
-                local isAngleGood = angleDiff < CONFIG.maxAngleDiff
-                
-                if isChaserDrifting and isLeaderDrifting and isBehind and isMovingFastEnough then
-                       -- [New] 角度一致性检查
-                       -- 必须动作同步才能得分 (防止瞎蹭)
-                       
-                       -- 基础得分为 0
-                       local scoreGain = 0
-                       
-                       if isAngleGood then
-                           if dist < CONFIG.distPraise then
-                              -- Perfect Zone: 0.2x points (1 star = 5 seconds)
-                              currentTier = 3
-                              scoreGain = realDt * 0.2 
-                           elseif dist < CONFIG.distNormal then
-                              -- Normal Zone: 0.04x points (1 star = 25 seconds)
-                              currentTier = 2 
-                              scoreGain = realDt * 0.04
-                           elseif dist < CONFIG.distMock then
-                               currentTier = 2
-                           elseif dist <= CONFIG.distProvoke then
-                               currentTier = 1
-                           end
-                       else
-                           -- 角度差太大，不得分 (但如果在范围内，维持Tier状态用于显示?)
-                           -- 暂时降级处理
-                           if dist < CONFIG.distMock then currentTier = 2 end
-                       end
-                       
-                       -- 更新 Stats (Global)
-                       -- 注意: 这里复用了 update loop 里的 stats 更新
-                       -- 但 Stats 是在下面 "if i == focusedCar" 专属块里更新的
-                       -- 所以这里只负责 Tier 更新 (用于 3D 文字)
-                    end
-
-
-                -- 预热计时器逻辑 (用于飘字锁定)
-                if currentTier > 0 then
-                    chaseTimers[pairKey] = (chaseTimers[pairKey] or 0) + dt
-                else
-                    chaseTimers[pairKey] = 0
-                end
-                
-                local timer = chaseTimers[pairKey]
-                local isLocked = timer > CONFIG.warmupTime
-
-                -- 状态检测 & 触发特效 (仅逻辑，不涉及 UI)
-                -- A. 刚刚锁定！
-                -- (已注释)
-
-                -- B. 跟丢了！
-                if wasLocked and not isLocked then
-                     -- only trigger if we actually had a lock for a bit
-                     if timer < 0.1 then
-                         add3DMessage(j, getRandomMsg(MSG_POOL.LOST), 3)
-                     end
-                end
-
-                -- C. 升级反馈 & 对话
-                if isLocked then
-                    if currentTier > lastTier then
-                       -- Cooldown Check
-                       local now = os.clock()
-                       local lastTime = lastMessageTime[pairKey] or -9999
-                       
-                       if now - lastTime > CONFIG.messageCooldown then
-                           lastMessageTime[pairKey] = now
-                           -- 对话生成...
-                           -- 70% 概率触发前车嘲讽
-                           if math.random() > 0.3 then 
-                              local msgTable = MSG_POOL["REAR_TIER" .. currentTier]
-                              -- add3DMessage(TargetCarIndex, Text, Mood)
-                              if msgTable then add3DMessage(j, getRandomMsg(msgTable), currentTier) end
-                           end
-                           -- 30% 概率触发后车心里话 (Optional, 也可以都触发)
-                           if math.random() > 0.7 then 
-                               -- Front Tier messages are for chaser
-                              local msgTable = MSG_POOL["FRONT_TIER" .. currentTier]
-                               -- add3DMessage(ChaserIndex, Text, Mood)
-                              if msgTable then add3DMessage(i, getRandomMsg(msgTable), currentTier) end
-                           end
-                       end
-                    end
-                end
-
-                lastDistances[pairKey] = currentTier
-                lastDistances[pairKey .. "_locked"] = isLocked
-                
-                -- [MERGED] 玩家专属逻辑: 完美追走
-                if i == sim.focusedCar then
-                    local stats = perfectChaseStats[pairKey] or { activeTime = 0, realTime = 0, graceTimer = 0 }
-                    -- [Fix] Reset display flag each frame so it doesn't stick
-                    stats.isDisplayed = false
-                    
-                    if isAngleGood then
-                        -- Calculate Score using Helper
-                        local gain = calculateScoreGain(stats.activeTime, dist, realDt)
-                        
-                        if gain > 0 then
-                             -- Scoring (Praise or Normal)
-                             stats.graceTimer = 0
-                             stats.activeTime = stats.activeTime + gain
-                             stats.realTime = stats.realTime + realDt
-                        elseif dist < CONFIG.distMock then
-                             -- In Mock Range (5m - 10m): No Score, but MAINTAIN chase
-                             -- Same behavior as "Bad Angle" in range -> Pause Decay
-                             stats.graceTimer = 0
-                             stats.realTime = stats.realTime + realDt
-                        else
-                             -- Lost Chase (Dist > Mock)
-                             stats.graceTimer = stats.graceTimer + realDt
-                             if stats.graceTimer > 1.0 then 
-                                 reportScore(stats.activeTime, stats.realTime, j) -- [New] Report with Leader Index
-                                 stats.activeTime = 0 
-                                 stats.realTime = 0
-                             end
-                        end
-
-                    else
-                         -- Bad Angle (角度不对)
-                         if dist < CONFIG.distMock then
-                             -- [New] Range OK (Wide) but Angle Bad -> PAUSE
-                             -- 只要在 20m 内 (可视范围)，角度不对只暂停，不断连
-                             stats.graceTimer = 0
-                         else
-                             -- Range Bad -> DECAY (Lost Chase)
-                             stats.graceTimer = stats.graceTimer + realDt
-                             if stats.graceTimer > 1.0 then 
-                                 reportScore(stats.activeTime, stats.realTime, j) -- [New] Report with Leader Index
-                                 stats.activeTime = 0 
-                                 stats.realTime = 0
-                             end
-                         end
-                    end
-                    perfectChaseStats[pairKey] = stats
-                    updatedStats[pairKey] = true -- [Fix] Mark as active
-                    
-                    -- ... Best Target Logic check angle too?
-                    -- Best Target logic relies on "isChaserDrifting and isLeaderDrifting".
-                    -- Use the raw values for finding target, let the bar color/progress reflect the strictness.
-                    -- But if angle is bad, bar shouldn't grow.
-                    -- The stats update above handles growth.
-                    -- ...
-
-                    
-                    -- 寻找最佳 UI 目标 (最近的有效目标)
-                    -- 条件：都在漂移，且距离在显示范围内 (45m)，且在玩家前方
-                    -- 注意: 这里复用 loop 中的 isChaserDrifting, isLeaderDrifting
-                    -- 但需要额外的 dot check 确保在我们前方 (UI 显示用)
-                    local playerLookDot = player.look:dot( (leader.position - chaser.position):normalize() )
-                    
-                    -- [Fix] 放宽视野判定 (View Cone)
-                    -- 原来的 > 0.5 (60度) 太严苛，大角度漂移时车头没对准前车会导致 UI 丢失
-                    -- 改为 > -0.2 (约 100度)，支持 Reverse Entry
-                    if isChaserDrifting and isLeaderDrifting and playerLookDot > -0.2 and rawDist < 45.0 then
-                        -- [Fix] 目标锁定粘滞 (Hysteresis)
-                        -- 为了防止目标乱跳，现在的目标会有 3.0m 的"虚拟距离优势"
-                        -- 也就是说，新目标必须比当前目标近 3.0m 以上才能抢走焦点
-                        local effectiveDist = dist
-                        if activeTarget and activeTarget.index == j then
-                            effectiveDist = dist - 3.0
-                        end
-
-                        -- 距离修正 (UI用)
-                        if effectiveDist < minFrontDist then
-                            minFrontDist = effectiveDist
-                            frameBestTarget = {
-                                index = j,
-                                dist = dist,
-                                stats = stats,
-                                isLocked = isLocked
-                            }
-                            -- [Removed] Don't set here, only set FINAL winner
-                        end
-                    end
-                end
-            end
-         end
-       end
+    local car = ac.getCar(i)
+    if car and car.isConnected then
+      local slip = getSlipAngle(car)
+      local isRaw = slip > CONFIG.minDriftAngle and car.speedKmh > CONFIG.minSpeed
+      if isRaw then State.driftTimers[i] = 0 else State.driftTimers[i] = (State.driftTimers[i] or 0) + realDt end
+      State.isDrifting[i] = State.driftTimers[i] < CONFIG.driftGraceTime
+    else
+      State.isDrifting[i] = false
     end
-  end
-  
-  -- [Fix] Finalize UI Target Flag
-  if frameBestTarget then
-      frameBestTarget.stats.isDisplayed = true
-  end
-  
-  -- [Fix] Cleanup Stale Stats (Frozen Chase Bug)
-  -- If we didn't update the stats this frame (e.g. stopped drifting/parked), decay them immediately.
-  for k, stats in pairs(perfectChaseStats) do
-      if not updatedStats[k] then
-          stats.graceTimer = stats.graceTimer + realDt
-          if stats.graceTimer > 1.0 then 
-               -- Report if valid score exists
-               -- Report if valid score exists
-               -- Report if valid score exists AND it was shown on UI
-               if stats.activeTime > 0 and stats.isDisplayed then
-                   -- Parse Leader Index from Key "chaser_leader"
-                   local _, _, _, leaderIdxStr = string.find(k, "(%d+)_(%d+)")
-                   local leaderIdx = tonumber(leaderIdxStr)
-                   reportScore(stats.activeTime, stats.realTime, leaderIdx)
-               end
-               -- Remove from list
-               perfectChaseStats[k] = nil
-          end
-      end
-  end
-
-  -- 更新全局状态供 drawUI 使用
-  if frameBestTarget then
-      activeTarget = frameBestTarget
-  else
-      -- 如果这一帧没有目标，快速重置(或保留上一帧? 还是重置吧以免UI卡住)
-      activeTarget = { index = -1, dist = 0, stats = nil }
   end
 end
 
--- 2D UI 绘制 (包含 Face 表情包 和 距离进度条)
-function script.drawUI(dt)
-  -- 2D UI 绘制 (仅保留距离进度条)
-  local uiState = ac.getUI()
-  local windowSize = uiState.windowSize
+-- 交互模块
+local function Logic_TriggerChat(chaserIdx, leaderIdx, tier, isChaser)
+    local msgTable = isChaser and MSGS.CHASER_TO_LEADER["TIER" .. tier] or MSGS.LEADER_TO_CHASER["TIER" .. tier]
+    if not msgTable then return end
+    
+    local text = getRandom(msgTable)
+    local targetIdx = isChaser and chaserIdx or leaderIdx
+    local color = COLORS.White -- 所有消息使用纯白
+
+    
+    table.insert(State.overheadQueue, {
+        carIndex = targetIdx, text = text, color = color, life = 3.0, offset = vec3(0, 1.5, 0)
+    })
+end
+
+
+-- 辅助函数：将世界坐标转换为相对车辆的局部坐标
+local function Math_WorldToLocal(refCar, targetPos)
+  local diff = targetPos - refCar.position
+  local fwd = refCar.look
+  local up = refCar.up or vec3(0, 1, 0) -- 防御性编程
+  local side = refCar.side 
   
-  ui.beginTransparentWindow("DriftOverlay", vec2(0,0), windowSize)
+  if not side then
+      -- 如果没有 side 属性，手动计算
+       side = fwd:cross(up):normalize()
+  end
   
+  -- 投影到局部轴
+  -- Local Z (纵向) = Diff dot Forward (前方为正)
+  -- Local X (横向) = Diff dot Side
+  -- Local Y (垂直) = Diff dot Up
+  
+  local z = diff:dot(fwd)
+  local x = diff:dot(side)
+  local y = diff:dot(up)
+  
+  return vec3(x, y, z)
+end
+
+-- 检测辅助函数
+local function Logic_IsChaseValid(chaser, leader, i, j)
+      -- 1. 漂移检查 (基础门槛)
+      if not (State.isDrifting[i] and State.isDrifting[j]) then return false, "未漂移" end
+      
+      -- 计算相对位置 (手动计算，替代 crashing 的 worldToLocal)
+      local relPos = Math_WorldToLocal(leader, chaser.position)
+      local longDist = -relPos.z -- 正值为后方距离 (注意：通常 Forward 是 +Z，但在 3D 数学中 worldToLocal 的 Z 轴定义可能不同，
+                                 -- 这里我们根据原始逻辑：longDist 正值为后方。
+                                 -- 如果 relPos.z 是前方距离 (前为正)，那么后方就是负数。
+                                 -- 原始代码这里用了 -relPos.z，说明原始 worldToLocal 返回的是 +Z 为前。
+                                 -- 所以如果我们 chaser 在 leader 后方，relPos.z 应该是负数 (例如 -10)，取反变成 +10。
+                                 -- 我们的 Math_WorldToLocal 计算的是 "在前方多少米"。
+                                 -- 比如 Chaser 在 Leader 后方 10米。 chaser = leader - 10*fwd. 
+                                 -- diff = -10*fwd. diff:dot(fwd) = -10. 
+                                 -- 所以 relPos.z 是 -10. longDist = -(-10) = 10. 正确。
+
+      local latDist = math.abs(relPos.x) -- 横向距离
+      
+      -- A. 追走判定 (正后方)
+      -- 在后方 2m 到 45m 之间，且横向偏差不过大
+      local isBehind = longDist > 2.0 and longDist < CONFIG.maxDistance and latDist < 10.0
+      
+      -- B. 并排判定 (贴门/Side-by-Side)
+      -- 允许稍微超车 (longDist > -2.0) 到 后方 5m 内，横向距离必须很近 (< 4.5m)
+      local isSideBySide = longDist > -2.0 and longDist < 5.0 and latDist < 4.5
+      
+      if not (isBehind or isSideBySide) then return false, "位置无效" end
+      
+      -- 3. 同步检查 (角度)
+      local cSlip = getSlipAngle(chaser)
+      local lSlip = getSlipAngle(leader)
+      local angleDiff = math.abs(cSlip - lSlip)
+      
+      if angleDiff >= CONFIG.maxAngleDiff then return false, "角度不同步" end
+      
+      return true, "OK", angleDiff
+end
+
+-- Tier 计算辅助函数 (包含角度质量)
+local function Logic_CalculateTier(dist, angleDiff)
+      -- Tier 3 (神级): 极近距离 (< 4m) 且 角度完美 (< 10deg)
+      -- 完美追走: 1秒 5分 (之前是10分)
+      if dist < CONFIG.distPraise and angleDiff < 10.0 then return 3, 5.0 end 
+      
+      -- Tier 2 (优秀): 近距离 (< 10m) 且 角度不错 (< 20deg)
+      -- 普通追走: 1秒 1分
+      if (dist < CONFIG.distNormal and angleDiff < 20.0) or (dist < CONFIG.distPraise) then return 2, 1.0 end 
+      
+      -- Tier 1 (有效): 只要在范围内算有效
+      -- 勉强跟住也算 1分
+      if dist < CONFIG.distMock then return 1, 1.0 end
+      
+      return 1, 0.0 -- 距离太远，或者是 provike 区域
+end
+
+-- 仅处理选定的目标
+local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
+  local key = i .. "_" .. j
+  local stats = State.chaseStats[key] or { 
+      activeTime=0, realTime=0, graceTimer=0, 
+      lastTier=0, lockTimer=0, isLocked=false, lastMsgTime=-9999 
+  }
+  
+  local rawDist = math.distance(chaser.position, leader.position)
+  local dist = math.max(0, rawDist - 2.0)
+  
+  -- 1. 核心判定：验证漂移状态与相对位置（追走或并排）
+  local isValid, reason, angleDiff = Logic_IsChaseValid(chaser, leader, i, j)
+  
+  -- 2. 动态评分：结合距离与角度同步率计算 Tier 等级
+  local currentTier = 0
+  local scoreGain = 0
+  
+  if isValid then
+      currentTier, scoreGain = Logic_CalculateTier(dist, angleDiff)
+      scoreGain = scoreGain * realDt
+  end
+  
+  -- 3. 状态维护：管理锁定时间与连击容错 (Grace Timer)
+  if currentTier > 0 then
+      stats.graceTimer = 0 -- 重置衰减
+      stats.activeTime = stats.activeTime + scoreGain
+      stats.realTime = stats.realTime + realDt
+      stats.lockTimer = stats.lockTimer + dt
+  else
+      stats.lockTimer = 0
+      stats.graceTimer = stats.graceTimer + realDt
+  end
+  
+  stats.isLocked = stats.lockTimer > CONFIG.warmupTime
+  
+  -- E. 交互 (聊天)
+  if currentTier > 0 then
+     local now = os.clock()
+     if now - stats.lastMsgTime > CONFIG.messageCooldown then
+         stats.lastMsgTime = now
+         
+         ac.log("触发对话! Tier: " .. currentTier .. " Pair: " .. key)
+         if math.random() > 0.5 then
+             Logic_TriggerChat(i, j, currentTier, true)
+         else
+             Logic_TriggerChat(i, j, currentTier, false)
+         end
+     end
+  end
+  
+  stats.lastTier = currentTier
+  
+  State.chaseStats[key] = stats
+  return { index = j, dist = dist, stats = stats }
+end
+
+-- 纯目标选择 (带滞后锁定)
+local function Logic_SelectTarget(sim, player)
+  local bestIdx = -1
+  local minDist = 99999
+  
+  for j = 0, sim.carsCount - 1 do
+      if j ~= sim.focusedCar then
+          local car = ac.getCar(j)
+          if car and car.isConnected then
+              local dist = math.distance(player.position, car.position)
+              
+              -- 简单过滤: 距离范围 + 前方视野/漂移状态
+              -- 如果正在漂移，优先选择漂移车
+              local isDrift = State.isDrifting[j]
+              local scoreDist = dist
+              
+              -- Hysteresis: 粘性锁定
+              if State.activeTarget and State.activeTarget.index == j then
+                  scoreDist = scoreDist - 10.0
+              end
+              
+              -- 稍微偏向正在漂移的目标 (-5m)
+              if isDrift then
+                  scoreDist = scoreDist - 5.0
+              end
+              
+              if scoreDist < CONFIG.maxDistance and scoreDist < minDist then
+                  -- 视野检查: 必须在前方 (大致)
+                  local dir = (car.position - player.position):normalize()
+                  if player.look:dot(dir) > 0.2 then -- +/- 80 degrees
+                       minDist = scoreDist
+                       bestIdx = j
+                  end
+              end
+          end
+      end
+  end
+  return bestIdx
+end
+
+
+
+-- ============================================================================
+-- 5. RENDER MODULES (渲染模块层)
+-- ============================================================================
+
+local function Render_StarRating(car, activeTime)
+    if not car then return end
+    
+    local score = math.floor(activeTime)
+    local tierIdx = 1 -- 默认白
+    local stars = 0
+    
+    -- 进阶逻辑 (5进制): 
+    -- 0-4: 白
+    -- 5: 进阶蓝 (显示为 1颗蓝)
+    
+    if score >= 625 then
+        tierIdx = 5
+        stars = math.min(5, math.floor(score / 625)) 
+    elseif score >= 125 then
+        tierIdx = 4
+        stars = math.floor(score / 125)
+    elseif score >= 25 then
+        tierIdx = 3
+        stars = math.floor(score / 25)
+    elseif score >= 5 then
+        tierIdx = 2
+        stars = math.floor(score / 5)
+    else
+        tierIdx = 1
+        stars = score
+    end
+    
+    -- 限制最大5颗星
+    stars = math.clamp(stars, 0, 5) 
+    
+    local conf = GRA_CONF[tierIdx]
+    -- 5个槽位
+    local starStr = string.rep("★", stars) .. string.rep("☆", 5 - stars)
+    
+    -- 组合显示: 星星 + 分数 (整数)
+    local fullText = starStr .. " " .. string.format("%d", score)
+    
+    -- 2.8m 高度 (避开名牌)
+    render.debugText(car.position + vec3(0, 2.8, 0), fullText, conf.color, 3.0)
+end
+
+local function Render_Overhead(dt)
+  -- 防御性编程: 如果 dt 为空，尝试获取真实帧时间
+  local safeDt = dt or ac.getDeltaT()
+
+  -- 1. 消息
+  for i = #State.overheadQueue, 1, -1 do
+      local item = State.overheadQueue[i]
+      local maxLife = 3.0 -- 与 Logic_TriggerChat 中的 life 一致
+      
+      -- 更新剩余寿命
+      item.life = item.life - safeDt
+      
+      if item.life <= 0 then
+          table.remove(State.overheadQueue, i)
+      else
+          local car = ac.getCar(item.carIndex)
+          if car then
+              -- 计算动画参数
+              local elapsed = maxLife - item.life
+              local progress = elapsed / maxLife
+              
+              -- 1. 字体放大 (1.0 -> 2.5倍)
+              local baseSize = 2.0
+              local currentSize = baseSize + (progress * 3.0) 
+              
+              -- 2. 向左飘走 (Relative to Car Left) + 向上浮动
+              -- offset 初始为 (0, 1.5, 0)
+              -- 向左移动: car.side * (-1 * elapsed)
+              -- 向上移动: world up * (elapsed * 0.5)
+              local sideDir = car.side or vec3(1,0,0)
+              local floatOffset = (-sideDir * (elapsed * 3.0)) + (vec3(0, 1, 0) * (elapsed * 1.5))
+              
+              local pos = car.position + item.offset + floatOffset
+              
+              -- 3. 透明度 (最后 0.5秒 淡出)
+              local alpha = 1.0
+              if item.life < 0.5 then
+                  alpha = item.life / 0.5
+              end
+              
+              local col = item.color:clone()
+              col.mult = alpha
+              
+              render.debugText(pos, item.text, col, currentSize)
+          end
+      end
+  end
+  
+  -- 2. 星级评分 (静态显示)
+  if State.activeTarget and State.activeTarget.index ~= -1 then
+      local t = State.activeTarget
+      local car = ac.getCar(t.index)
+      Render_StarRating(car, t.stats.activeTime)
+  end
+  
+
+end
+
+local function AddDanmaku(text, color)
+  local DANMAKU_CONFIG = {
+      depth = 8.0,      -- 相机前方距离
+      width = 12.0,     -- 该深度下的虚拟屏幕宽度 (米)
+      height = 6.0,     -- 虚拟屏幕高度 (米)
+      speed = 0.25,     -- 米每秒
+      fontSize = 5.0,   
+      maxLines = 5,
+      lineHeight = 1.2
+  }
+  
+  local lineIdx = math.random(0, DANMAKU_CONFIG.maxLines - 1)
+  local speed = DANMAKU_CONFIG.speed + math.random() * 1.0
+  
+  table.insert(State.danmakuQueue, {
+      text = text, 
+      color = color or COLORS.White,
+      x = (DANMAKU_CONFIG.width / 2) + math.random(0, 2), 
+      y = (DANMAKU_CONFIG.height / 3) - (lineIdx * DANMAKU_CONFIG.lineHeight),
+      speed = speed,
+      life = 60.0
+  })
+end
+
+local function Render_Danmaku(dt)
+  local safeDt = dt or ac.getDeltaT()
+
+  -- 1. 获取相机基 (世界坐标)
+  local camPos = ac.getCameraPosition()
+  local camLook = ac.getCameraForward()
+  local camUp = ac.getCameraUp()
+  local camSide = ac.getCameraSide() 
+  
+  -- 虚拟屏幕中心
+  local depth = 8.0 -- 与上方配置同步
+  local width = 12.0
+  local screenCenter = camPos + camLook * depth
+
+  for i = #State.danmakuQueue, 1, -1 do
+      local item = State.danmakuQueue[i]
+      
+      -- 更新位置
+      item.x = item.x - item.speed * safeDt
+      
+      -- 计算 3D 世界坐标
+      local textPos = screenCenter + (camSide * item.x) + (camUp * item.y)
+      
+      -- 直接在 3D 中绘制
+      render.debugText(textPos, item.text, item.color, 5.0)
+      
+      -- 清理
+      if item.x < -(width / 2) - 5 then 
+          table.remove(State.danmakuQueue, i)
+      end
+  end
+end
+
+
+
+-- ============================================================================
+-- 6. MAIN LOOP (主循环)
+-- ============================================================================
+
+function script.update(dt)
+  local realDt = ac.getDeltaT()
   local sim = ac.getSim()
+  
+  Logic_UpdateDrift(sim, realDt)
+  
   local player = ac.getCar(sim.focusedCar)
   
-  -- 2. 距离进度条逻辑 (使用 update 计算好的 activeTarget)
-  if activeTarget.index ~= -1 and player then
-      local targetCar = ac.getCar(activeTarget.index)
-      if targetCar then
-          local dist = activeTarget.dist
-          local headPos = targetCar.position + vec3(0, 1.4, 0)
-          local proj = render.projectPoint(headPos)
-          
-          if proj.x > -0.2 and proj.x < 1.2 and proj.y > -0.2 and proj.y < 1.2 then
-              local screenPos = vec2(proj.x * windowSize.x, proj.y * windowSize.y)
-              
-              -- Bar Config
-              local barWidth = 140
-              local barHeight = 8
-              local barPos = screenPos - vec2(barWidth / 2, 0)
-              
-              -- Progress
-              local progress = 1.0 - math.clamp(dist / 45.0, 0, 1)
-
-              -- Perfect Chase Timer
-              local stats = activeTarget.stats
-              local isPerfect = stats and (stats.activeTime >= 1.0) or false
-              local activeTime = stats and stats.activeTime or 0
-
-              -- Draw Bar
-              local barColor = rgbm(0, 1, 0, 0.9) -- Default Green (> Normal)
-              
-              if dist < CONFIG.distPraise then
-                  barColor = rgbm(0.8, 0, 1, 1) -- Perfect: Purple
-              elseif dist < CONFIG.distNormal then
-                  barColor = rgbm(1, 0.84, 0, 1) -- Normal: Gold
-              end
-              
-              ui.drawRectFilled(barPos, barPos + vec2(barWidth, barHeight), rgbm(0, 0, 0, 0.5), 2)
-              local fillW = barWidth * progress
-              if fillW > 2 then
-                  ui.drawRectFilled(barPos, barPos + vec2(fillW, barHeight), barColor, 2)
-              end
-              
-              -- Star Rating System (Replaces Timer)
-              if activeTime > 0.0 then
-                    -- Use Helper for consistent logic
-                    local grade = getChaseGrade(activeTime)
-                    local STAR_Count = 5
-                    
-                    -- Determine Colors based on grade.cycle
-                    local cycle = grade.cycle
-                    local baseCol = getStarColor(math.min(cycle + 1, #GRADE_COLORS))  -- Current Cycle Background
-                    local fillCol = getStarColor(math.min(cycle + 2, #GRADE_COLORS))  -- Filling Color
-                    
-                    -- If max level reached
-                    if cycle >= (#GRADE_COLORS - 1) then
-                        baseCol = GRADE_COLORS[#GRADE_COLORS]
-                        fillCol = rgbm(1, 1, 1, 1) -- Flash White
-                    end
-                    
-                    -- Calc partial progress for current star
-                    local localTime = activeTime % 1.0 -- Assuming 1.0s per star
-                    -- Note: grade.stars is 0-4 (completed stars).
-                    -- So we are filling star index (grade.stars + 1).
-                    local activeStarIndex = grade.stars + 1 
-                    local activeStarProgress = localTime / 1.0
-
-                   ui.pushFont(ui.Font.Title) -- Large stars
-                   local starStr = "★"
-                   local starSize = ui.measureText(starStr)
-                   local spacing = 5
-                   local totalWidth = (starSize.x + spacing) * STAR_Count
-                   local startX = barPos.x + (barWidth - totalWidth) / 2
-                   local startY = barPos.y - 45 -- Above bar
-                   
-                   for s = 1, STAR_Count do
-                       local sPos = vec2(startX + (s-1) * (starSize.x + spacing), startY)
-                       
-                       if s < activeStarIndex then
-                           -- Fully filled
-                           ui.setCursor(sPos)
-                           ui.textColored(starStr, fillCol)
-                       elseif s > activeStarIndex then
-                           -- Empty (Base Color)
-                           ui.setCursor(sPos)
-                           ui.textColored(starStr, baseCol)
-                       else
-                           -- Currently filling (Progressive Cut)
-                           -- 1. Draw Base
-                           ui.setCursor(sPos)
-                           ui.textColored(starStr, baseCol)
-                           
-                           -- 2. Draw Fill Clipped
-                           local t = activeStarProgress
-                           local clipMin = sPos
-                           local clipMax = sPos + vec2(starSize.x * t, starSize.y)
-                           
-                           ui.pushClipRect(clipMin, clipMax, true)
-                           ui.setCursor(sPos)
-                           ui.textColored(starStr, fillCol)
-                           ui.popClipRect()
-                       end
-                   end
-                   ui.popFont()
-              end
-              
-
-          end
+  -- 1. 确认目标 (Select)
+  local targetIdx = Logic_SelectTarget(sim, player)
+  local activeData = nil
+  
+  -- 2. 判定追走 (Process)
+  if targetIdx ~= -1 then
+      local leader = ac.getCar(targetIdx)
+      if leader then
+          activeData = Logic_ProcessChase(sim.focusedCar, targetIdx, player, leader, dt or realDt, realDt, sim)
       end
   end
-
-  ui.endTransparentWindow()
-end
-
--- 3D 绘制 (仅保留 Danmaku HUD)
-function script.draw3D(dt)
-  -- [New] 3D Danmaku (HUD)
-  updateAndDrawDanmaku(dt)
   
-  -- [New] 3D Overhead (Taunts)
-  updateAndDrawOverhead(dt)
+  State.activeTarget = activeData or { index = -1, dist=0, stats={} }
 end
 
+function script.draw3D(dt)
+  local safeDt = dt or ac.getDeltaT()
+  Render_Overhead(safeDt)
+  Render_Danmaku(safeDt)
+end
 
+ac.onChatMessage(function(msg, carIndex) 
+   -- 处理系统消息
+   if carIndex == -1 then
+       AddDanmaku("[System]: " .. msg, rgbm(1, 1, 0.5, 1)) -- 淡黄色
+       return
+   end
 
--- [New] 聊天消息接入 (Chat Integration)
-ac.onChatMessage(function(msg, senderName, carIndex)
-    -- 1. 参数归一化 (Normalize Arguments)
-    -- 情况 A: (msg, carIndex) -> senderName 是 index, carIndex 是 nil
-    if type(senderName) == "number" then
-        carIndex = senderName
-        senderName = nil
-    end
-    
-    -- [Fix] Ignore System Messages (Index < 0 are System/Server KeepAlives) and Empty Messages
-    -- The "Driver -1" bubbles are caused by rendering these system packets.
-    -- We must filter them out to only show real player chat.
-    if (carIndex and carIndex < 0) or (not msg or msg == "") or (not carIndex and not senderName) then 
-        return 
-    end
-
-    -- 情况 B: carIndex 依然为空，尝试用 senderName 字符串反查 (如果 senderName 是名字)
-    local senderCar = nil
-    if (not carIndex or carIndex == -1) and type(senderName) == "string" then
-        local sim = ac.getSim()
-        for i = 0, sim.carsCount - 1 do
-            local c = ac.getCar(i)
-            if c and c.driverName == senderName then
-                carIndex = i
-                break
-            end
-        end
-    end
-
-    -- 2. 获取车辆对象 (Get Car Object)
-    if carIndex and carIndex >= 0 then
-        senderCar = ac.getCar(carIndex)
-    end
-    
-    
-    -- [New] Check if sender is the focused player
-    local sim = ac.getSim()
-    local isSelf = (carIndex == sim.focusedCar)
-    
-    -- [New] 触发全屏弹幕 (Global Danmaku)
-    local danmakuColor = isSelf and rgbm(0.5, 0.35, 0, 1) or rgbm(0.4, 0.4, 0.4, 1)
-    
-    -- 3. 构造显示名称 (Priority: Car.driverName > senderName > "Unknown")
-    local finalName = senderName
-    if senderCar then
-        -- [Fix] Robust Name Fetching (handle function vs string vs nil)
-        local rawName = senderCar.driverName
-        if type(rawName) == "function" then
-            finalName = rawName(senderCar) -- Try method call style or just function
-        elseif type(rawName) == "string" then
-            finalName = rawName
-        end
-    end
-    
-    -- Normalize to string
-    if type(finalName) ~= "string" then
-        finalName = tostring(finalName)
-    end
-    
-    -- Filter out "nil" string
-    if finalName == "nil" then finalName = "Driver " .. (carIndex or "?") end
-    
-    local displayText = msg
-    if finalName then 
-        -- [Visual] Icons for different message types
-        if msg:find("追走结算") then
-             displayText = finalName .. " [*] " .. msg
-        else
-             displayText = finalName .. " > " .. msg 
-        end
-    end
-    
-    addDanmaku(displayText, danmakuColor)
-
+   local car = ac.getCar(carIndex)
+   local name = "Car " .. tostring(carIndex)
+   
+   if car then
+       if type(car.driverName) == "string" then
+           name = car.driverName
+       elseif type(car.driverName) == "function" then
+           -- 尝试作为方法调用，如果失败则作为普通函数
+           local status, result = pcall(function() return car:driverName() end)
+           if status then 
+              name = result 
+           else
+              -- 如果 : 调用失败，尝试 . 调用
+               name = car.driverName(car)
+           end
+       end
+   end
+   
+   local fullMsg = name .. ": " .. msg
+   AddDanmaku(fullMsg, COLORS.White)
 end)
