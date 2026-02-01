@@ -53,20 +53,30 @@ local GRA_CONF = {
 }
 
 local MSGS = {
-  CHASER_TO_LEADER = {
-    TIER3 = { "让让弟弟!", "贴贴!", "这屁股我收下了!" },
-    TIER2 = { "开太慢了!", "在散步?", "给点力啊!" },
-    LOST  = { "迷路了?", "人呢?", "回家练练吧!" }
-  },
   LEADER_TO_CHASER = {
-    TIER3 = { "别亲我屁股!", "负距离!", "真爱粉!" },
-    TIER2 = { "这就粘上了?", "跟紧点弟弟!", "想超车吗?" },
-    TIER1 = { "来追我呀!", "闻闻尾气!", "就这点本事?" }
+    -- 被贴脸 (神级压力)
+    TIER3 = { 
+        "别亲我屁股!", "负距离!", "变态啊!", 
+        "要撞了要撞了!", "你没有刹车吗?", "太近了太近了!",
+        "别摸我!", "报警了啊!", "你是长在我车上了吗?"
+    },
+    -- 被紧追 (优秀压力)
+    TIER2 = { 
+        "这就粘上了?", "跟紧点弟弟!", "想超车吗?", 
+        "甩不掉?!", "有点东西!", "牛皮糖一样!",
+        "咬得挺死啊!", "别眨眼!" 
+    },
+    -- 把后车甩远了 (嘲讽)
+    TIER1 = { 
+        "来追我呀!", "闻闻尾气!", "就这点本事?", 
+        "后视镜里没人?", "我在散步你都跟不上?", "需要拖车吗?",
+        "建议重开!", "看不见你咯!", "我在终点等你!"
+    }
   },
   RESULTS = {
-    FAIL = { "完全跟不住啊!", "这是在画龙吗?", "轮胎没热!" },
-    OK   = { "勉强跟住了!", "普通发挥!", "还可以更近!" },
-    GOOD = { "我是你的影子!", "胶水做的车!", "窒息般的压迫感!" }
+    FAIL = { "完全跟不住啊!", "这是在画龙吗?", "轮胎没热?", "像是酒驾..." },
+    OK   = { "勉强跟住了!", "普通发挥!", "还可以更近!", "及格水平" },
+    GOOD = { "我是你的影子!", "胶水做的车!", "窒息般的压迫感!", "完美的同步!" }
   }
 }
 
@@ -206,8 +216,8 @@ local function Logic_CalculateTier(dist, angleDiff)
       if (dist < CONFIG.distNormal and angleDiff < 20.0) or (dist < CONFIG.distPraise) then return 2, 1.0 end 
       
       -- Tier 1 (有效): 只要在范围内算有效
-      -- 勉强跟住也算 1分
-      if dist < CONFIG.distMock then return 1, 1.0 end
+      -- 勉强跟住: 不加分，只算维持连接
+      if dist < CONFIG.distMock then return 1, 0.0 end
       
       return 1, 0.0 -- 距离太远，或者是 provike 区域
 end
@@ -254,12 +264,8 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
      if now - stats.lastMsgTime > CONFIG.messageCooldown then
          stats.lastMsgTime = now
          
-         ac.log("触发对话! Tier: " .. currentTier .. " Pair: " .. key)
-         if math.random() > 0.5 then
-             Logic_TriggerChat(i, j, currentTier, true)
-         else
-             Logic_TriggerChat(i, j, currentTier, false)
-         end
+         -- 只触发前车嘲讽后车
+         Logic_TriggerChat(i, j, currentTier, false)
      end
   end
   
@@ -508,6 +514,8 @@ function script.draw3D(dt)
 end
 
 ac.onChatMessage(function(msg, carIndex) 
+   if not msg or #msg == 0 or msg:match("^%s*$") then return end
+
    -- 处理系统消息
    if carIndex == -1 then
        AddDanmaku("[System]: " .. msg, rgbm(1, 1, 0.5, 1)) -- 淡黄色
