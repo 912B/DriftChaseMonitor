@@ -392,22 +392,34 @@ local function Render_Overhead(dt)
               local tSize = math.min(elapsed, FLOAT_TIME) / FLOAT_TIME
               local currentSize = 2.0 + (tSize * 2.5) -- 2.0 -> 4.5
               
-              -- 2. 位移计算
-              local sideDir = car.side or vec3(1,0,0)
+              -- 2. 位移计算 (往屏幕中心漂)
+              -- 如果车在屏幕右侧，文字往左飘；如果在左侧，往右飘。
+              local camPos = ac.getCameraPosition()
+              local camSide = ac.getCameraSide()
+              local toCar = car.position - camPos
+              local sideDot = toCar:dot(camSide)
+              
+              -- 确定漂移方向: 总是反向于它偏离屏幕中心的方向
+              local driftDir = vec3(0,0,0)
+              if sideDot > 0 then
+                  driftDir = -camSide -- 在右边，往左
+              else
+                  driftDir = camSide  -- 在左边，往右
+              end
+              
               local upDir = vec3(0, 1, 0)
               
-              -- 阶段1偏移: 向左 3m, 向上 1.5m
+              -- 阶段1偏移: 向中心 2m, 向上 1.5m
               local p1_t = math.min(elapsed, FLOAT_TIME) / FLOAT_TIME
-              -- 使用 easeOutQuad (t * (2 - t))
               local easeP1 = p1_t * (2 - p1_t) 
-              local offset1 = (-sideDir * (easeP1 * 3.5)) + (upDir * (easeP1 * 1.5))
+              local offset1 = (driftDir * (easeP1 * 2.0)) + (upDir * (easeP1 * 1.5))
               
-              -- 阶段2偏移: 缓慢继续漂移 (从 1.2s 开始)
+              -- 阶段2偏移: 缓慢继续 (从 1.2s 开始)
               local offset2 = vec3(0,0,0)
               if elapsed > FLOAT_TIME then
                   local hoverT = elapsed - FLOAT_TIME
-                  -- 极慢漂移: 0.1m/s
-                  offset2 = (-sideDir * (hoverT * 0.2)) + (upDir * (hoverT * 0.1))
+                  -- 极慢漂移
+                  offset2 = (driftDir * (hoverT * 0.2)) + (upDir * (hoverT * 0.1))
               end
               
               local pos = car.position + item.offset + offset1 + offset2
