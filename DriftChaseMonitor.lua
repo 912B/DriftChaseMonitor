@@ -222,6 +222,41 @@ local function Logic_CalculateTier(dist, angleDiff)
       return 1, 0.0 -- 距离太远，或者是 provike 区域
 end
 
+
+-- 结束追走并结算
+local function Logic_FinishChase(key, stats, leaderName)
+    local activeTime = stats.activeTime
+    if activeTime < 2.0 then return end -- 时间太短不结算
+    
+    local score = math.floor(activeTime)
+    
+    -- 计算星级颜色 (与 Render_StarRating 逻辑一致)
+    local starsStr = ""
+    local colorName = "白"
+    
+    if score >= 625 then
+        colorName = "紫"
+        starsStr = "★★★★★" -- 简化显示，不像渲染那样精细计算多颗星
+    elseif score >= 125 then
+        colorName = "金"
+        starsStr = "★★★★"
+    elseif score >= 25 then
+        colorName = "绿"
+        starsStr = "★★★"
+    elseif score >= 5 then
+        colorName = "蓝"
+        starsStr = "★★"
+    else
+        colorName = "白"
+        starsStr = "★"
+    end
+    
+    -- 仅仅发送聊天消息 (Chat Message)
+    -- 格式: [追走结算] 齐驰上树 (Car 0) -> 52分 (绿星 ★★★)
+    local msg = string.format("追走结束! 获得: %d分 (%s色 %s)", score, colorName, starsStr)
+    ac.sendChatMessage(msg)
+end
+
 -- 仅处理选定的目标
 local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
   local key = i .. "_" .. j
@@ -256,7 +291,18 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
       stats.graceTimer = stats.graceTimer + realDt
   end
   
-  stats.isLocked = stats.lockTimer > CONFIG.warmupTime
+  -- 判断是否断开
+  if stats.graceTimer > CONFIG.comboGrace then
+       -- 结算并重置
+       if stats.activeTime > 0 then
+           local leaderName = ac.getCar(j).driverName
+           Logic_FinishChase(key, stats, leaderName)
+           stats.activeTime = 0
+       end
+       stats.isLocked = false
+  else
+       stats.isLocked = stats.lockTimer > CONFIG.warmupTime
+  end
   
   -- E. 交互 (聊天)
   if currentTier > 0 then
