@@ -77,6 +77,12 @@ local MSGS = {
     FAIL = { "完全跟不住啊!", "这是在画龙吗?", "轮胎没热?", "像是酒驾..." },
     OK   = { "勉强跟住了!", "普通发挥!", "还可以更近!", "及格水平" },
     GOOD = { "我是你的影子!", "胶水做的车!", "窒息般的压迫感!", "完美的同步!" }
+  },
+  RESULTS_SUFFIX = {
+    " 就这？", " 我还没出力呢。", " 稍微认真了一点点。", 
+    " 也就是有手就行。", " 甚至还能喝口水。", " 感觉不如...自动驾驶。",
+    " 下次记得踩油门。", " 这是你的极限吗？", " 建议去开买菜车。",
+    " 汗都没出。", " 甚至想倒车入库。", " 你的轮胎是租的吗？"
   }
 }
 
@@ -252,8 +258,13 @@ local function Logic_FinishChase(key, stats, leaderName)
     end
     
     -- 仅仅发送聊天消息 (Chat Message)
-    -- 格式: [追走结算] 齐驰上树 (Car 0) -> 52分 (绿星 ★★★)
-    local msg = string.format("追走结束! 获得: %d分 (%s色 %s)", score, colorName, starsStr)
+    -- 格式: [追走结算] 齐驰上树 (Car 0) -> 52分 (绿星 ★★★) 阴阳怪气后缀
+    local suffix = ""
+    if MSGS.RESULTS_SUFFIX then
+        suffix = getRandom(MSGS.RESULTS_SUFFIX)
+    end
+    
+    local msg = string.format("追走结束! 获得: %d分 (%s色 %s)%s", score, colorName, starsStr, suffix)
     ac.sendChatMessage(msg)
 end
 
