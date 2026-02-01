@@ -137,7 +137,7 @@ local function Logic_TriggerChat(chaserIdx, leaderIdx, tier, isChaser)
 
     
     table.insert(State.overheadQueue, {
-        carIndex = targetIdx, text = text, color = color, life = 3.0, offset = vec3(0, 1.5, 0)
+        carIndex = targetIdx, text = text, color = color, life = 5.0, offset = vec3(0, 1.5, 0)
     })
 end
 
@@ -370,8 +370,7 @@ local function Render_Overhead(dt)
   -- 1. 消息
   for i = #State.overheadQueue, 1, -1 do
       local item = State.overheadQueue[i]
-      local maxLife = 3.0 -- 与 Logic_TriggerChat 中的 life 一致
-      
+      local maxLife = 5.0 -- 增加到 5.0s- safeDt
       -- 更新剩余寿命
       item.life = item.life - safeDt
       
@@ -380,27 +379,43 @@ local function Render_Overhead(dt)
       else
           local car = ac.getCar(item.carIndex)
           if car then
-              -- 计算动画参数
               local elapsed = maxLife - item.life
-              local progress = elapsed / maxLife
               
-              -- 1. 字体放大 (1.0 -> 2.5倍)
-              local baseSize = 2.0
-              local currentSize = baseSize + (progress * 3.0) 
+              -- 动画阶段:
+              -- 1. 快速出现 + 飘升 (0 ~ 1.2s)
+              -- 2. 悬停 + 缓慢飘动 (1.2s ~ 4.0s)
+              -- 3. 消失 (4.0s ~ 5.0s)
               
-              -- 2. 向左飘走 (Relative to Car Left) + 向上浮动
-              -- offset 初始为 (0, 1.5, 0)
-              -- 向左移动: car.side * (-1 * elapsed)
-              -- 向上移动: world up * (elapsed * 0.5)
+              local FLOAT_TIME = 1.2
+              
+              -- 1. 字体大小 (快速变大后保持)
+              local tSize = math.min(elapsed, FLOAT_TIME) / FLOAT_TIME
+              local currentSize = 2.0 + (tSize * 2.5) -- 2.0 -> 4.5
+              
+              -- 2. 位移计算
               local sideDir = car.side or vec3(1,0,0)
-              local floatOffset = (-sideDir * (elapsed * 3.0)) + (vec3(0, 1, 0) * (elapsed * 1.5))
+              local upDir = vec3(0, 1, 0)
               
-              local pos = car.position + item.offset + floatOffset
+              -- 阶段1偏移: 向左 3m, 向上 1.5m
+              local p1_t = math.min(elapsed, FLOAT_TIME) / FLOAT_TIME
+              -- 使用 easeOutQuad (t * (2 - t))
+              local easeP1 = p1_t * (2 - p1_t) 
+              local offset1 = (-sideDir * (easeP1 * 3.5)) + (upDir * (easeP1 * 1.5))
               
-              -- 3. 透明度 (最后 0.5秒 淡出)
+              -- 阶段2偏移: 缓慢继续漂移 (从 1.2s 开始)
+              local offset2 = vec3(0,0,0)
+              if elapsed > FLOAT_TIME then
+                  local hoverT = elapsed - FLOAT_TIME
+                  -- 极慢漂移: 0.1m/s
+                  offset2 = (-sideDir * (hoverT * 0.2)) + (upDir * (hoverT * 0.1))
+              end
+              
+              local pos = car.position + item.offset + offset1 + offset2
+              
+              -- 3. 透明度 (最后 1.0秒 淡出)
               local alpha = 1.0
-              if item.life < 0.5 then
-                  alpha = item.life / 0.5
+              if item.life < 1.0 then
+                  alpha = item.life / 1.0
               end
               
               local col = item.color:clone()
