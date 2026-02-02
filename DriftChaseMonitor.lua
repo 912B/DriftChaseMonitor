@@ -237,6 +237,9 @@ local function Logic_FinishChase(key, stats, leaderName)
     
     local score = math.floor(activeTime)
     
+    -- 优化：绿色星星 (25分) 以上才发送消息，避免低分刷屏
+    if score < 25 then return end
+
     -- 计算星级颜色 (与 Render_StarRating 逻辑一致)
     local starsStr = ""
     local colorName = "白"
