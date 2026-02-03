@@ -283,10 +283,6 @@ local function Logic_FinishChase(key, stats, leaderName)
     
     local msg = string.format("追走结束! 获得: %d分 (%s色 %s) %s", score, colorName, starsStr, suffix)
     ac.sendChatMessage(msg)
-    
-    -- [RESTORED] 本地弹幕反馈，确保屏幕上能看到彩色结果
-    local danmakuColor = COLORS[colorKey] or COLORS.White
-    AddDanmaku(msg, danmakuColor) 
 end
 
 -- 仅处理选定的目标
@@ -534,65 +530,7 @@ local function Render_Overhead(dt)
 
 end
 
-local function AddDanmaku(text, color)
-  local DANMAKU_CONFIG = {
-      depth = 8.0,      -- 相机前方距离
-      width = 12.0,     -- 该深度下的虚拟屏幕宽度 (米)
-      height = 6.0,     -- 虚拟屏幕高度 (米)
-      speed = 0.25,     -- 米每秒
-      fontSize = 3.5,   -- [MODIFIED] 缩小 1/3 (5.0 -> 3.5)
-      maxLines = 3,         -- [MODIFIED] 减少行数，只保留上方 3 行
-      lineHeight = 0.8      -- [MODIFIED] 进一步调小间距，让最下面一行离车顶更远
-  }
-  
-  local lineIdx = math.random(0, DANMAKU_CONFIG.maxLines - 1)
-  local speed = DANMAKU_CONFIG.speed + math.random() * 1.0
-  
-  table.insert(State.danmakuQueue, {
-      text = text, 
-      color = color or COLORS.White,
-      x = (DANMAKU_CONFIG.width / 2) + math.random(0, 2), 
-      -- [MODIFIED] 暴力抬高：起始高度直接设为 4.5m (原先约 2.7m)，强制顶满上边缘
-      y = 4.5 - (lineIdx * DANMAKU_CONFIG.lineHeight),
-      speed = speed,
-      life = 60.0,
-      fontSize = DANMAKU_CONFIG.fontSize -- Store for render
-  })
-end
 
-local function Render_Danmaku(dt)
-  local safeDt = dt or ac.getDeltaT()
-
-  -- 1. 获取相机基 (世界坐标)
-  local camPos = ac.getCameraPosition()
-  local camLook = ac.getCameraForward()
-  local camUp = ac.getCameraUp()
-  local camSide = ac.getCameraSide() 
-  
-  -- 虚拟屏幕中心
-  local depth = 8.0 -- 与上方配置同步
-  local width = 12.0
-  local screenCenter = camPos + camLook * depth
-
-  for i = #State.danmakuQueue, 1, -1 do
-      local item = State.danmakuQueue[i]
-      
-      -- 更新位置
-      item.x = item.x - item.speed * safeDt
-      
-      -- 计算 3D 世界坐标
-      local textPos = screenCenter + (camSide * item.x) + (camUp * item.y)
-      
-      -- 直接在 3D 中绘制
-      -- [MODIFIED] 使用 item 自带字体大小 (3.5)
-      render.debugText(textPos, item.text, item.color, item.fontSize or 3.5)
-      
-      -- 清理
-      if item.x < -(width / 2) - 5 then 
-          table.remove(State.danmakuQueue, i)
-      end
-  end
-end
 
 
 
@@ -630,10 +568,15 @@ function script.update(dt)
       if leader and leader.isConnected then
           activeData = Logic_ProcessChase(sim.focusedCar, targetIdx, player, leader, dt or realDt, realDt, sim)
       else
-          -- [FIXED] 目标断开 (可能是回P了)，如果之前有分数，必须立刻结算！
-          if State.activeTarget.index == targetIdx and State.activeTarget.stats.activeTime > 0 then
+          -- [OPTIMIZED] 目标断开结算逻辑
+          -- 缓存上一帧的目标状态
+          local prevTarget = State.activeTarget 
+          
+          -- 检查是否是我们正在追的目标且有分数
+          if prevTarget and prevTarget.index == targetIdx and prevTarget.stats.activeTime > 0 then
              local leaderName = (leader and leader.driverName) or "Unknown"
-             Logic_FinishChase(targetIdx .. "_" .. State.activeTarget.index, State.activeTarget.stats, leaderName)
+             -- [CORRECTED KEY] 使用 sim.focusedCar (chaser) .. "_" .. targetIdx (leader) 以匹配 Logic_ProcessChase
+             Logic_FinishChase(sim.focusedCar .. "_" .. targetIdx, prevTarget.stats, leaderName)
           end
           
           -- 目标断开，强制清除
@@ -647,33 +590,6 @@ end
 function script.draw3D(dt)
   local safeDt = dt or ac.getDeltaT()
   Render_Overhead(safeDt)
-  Render_Danmaku(safeDt)
 end
 
-ac.onChatMessage(function(msg, carIndex) 
-   if not msg or #msg == 0 or msg:match("^%s*$") then return end
 
-   -- 处理系统消息
-   if carIndex == -1 then return end
-
-   local car = ac.getCar(carIndex)
-   local name = "Car " .. tostring(carIndex)
-   
-   if car then
-       if type(car.driverName) == "string" then
-           name = car.driverName
-       elseif type(car.driverName) == "function" then
-           -- 尝试作为方法调用，如果失败则作为普通函数
-           local status, result = pcall(function() return car:driverName() end)
-           if status then 
-              name = result 
-           else
-              -- 如果 : 调用失败，尝试 . 调用
-               name = car.driverName(car)
-           end
-       end
-   end
-   
-   local fullMsg = name .. ": " .. msg
-   AddDanmaku(fullMsg, COLORS.White)
-end)
