@@ -331,11 +331,12 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
        stats.isLocked = false
   else
        -- [FIXED] 只要有分数积累 (activeTime > 0)，就强制保持锁定，直到 Grace 超时
-       -- 否则，必须满足预热时间才能算锁定
+       -- [MODIFIED] 零分不锁定：如果还没开始得分 (activeTime == 0)，则始终不锁定 (isLocked = false)
+       -- 这允许 Logic_SelectTarget 继续寻找更近/更好的目标，直到我们真正开始拿分为止。
        if stats.activeTime > 0 then
            stats.isLocked = true
        else
-           stats.isLocked = stats.lockTimer > CONFIG.warmupTime
+           stats.isLocked = false
        end
   end
   
