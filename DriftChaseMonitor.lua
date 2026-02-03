@@ -542,7 +542,7 @@ local function AddDanmaku(text, color)
       speed = 0.25,     -- 米每秒
       fontSize = 3.5,   -- [MODIFIED] 缩小 1/3 (5.0 -> 3.5)
       maxLines = 3,         -- [MODIFIED] 减少行数，只保留上方 3 行
-      lineHeight = 1.0      -- [MODIFIED] 稍微调小行高
+      lineHeight = 0.8      -- [MODIFIED] 进一步调小间距，让最下面一行离车顶更远
   }
   
   local lineIdx = math.random(0, DANMAKU_CONFIG.maxLines - 1)
