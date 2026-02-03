@@ -16,9 +16,9 @@ local CONFIG = {
   maxDistance = 45.0,    -- 最大距离 (米)
   
   -- 区域判定 (米)
-  distPraise = 3.5,      -- Tier 3 (贴脸)
-  distNormal = 10.0,     -- Tier 2 (正常)
-  distMock = 20.0,       -- Tier 1 (有距离但还没丢)
+  distPraise = 3.0,      -- Tier 3 (贴脸)
+  distNormal = 5.0,     -- Tier 2 (正常)
+  distMock = 10.0,       -- Tier 1 (有距离但还没丢)
   distProvoke = 45.0,    -- Tier 0 (丢了，或者太远)
   
   -- 计时器
@@ -283,6 +283,10 @@ local function Logic_FinishChase(key, stats, leaderName)
     
     local msg = string.format("追走结束! 获得: %d分 (%s色 %s) %s", score, colorName, starsStr, suffix)
     ac.sendChatMessage(msg)
+    
+    -- [RESTORED] 本地弹幕反馈，确保屏幕上能看到彩色结果
+    local danmakuColor = COLORS[colorKey] or COLORS.White
+    AddDanmaku(msg, danmakuColor) 
 end
 
 -- 仅处理选定的目标
