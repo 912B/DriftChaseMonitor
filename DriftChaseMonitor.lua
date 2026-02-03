@@ -79,11 +79,17 @@ local MSGS = {
     GOOD = { "我是你的影子!", "胶水做的车!", "窒息般的压迫感!", "完美的同步!" }
   },
   RESULTS_SUFFIX = {
-       White = { "这路线谁跟得上？", "这是在画龙吗?", "忽快忽慢的...", "完全没节奏...", "这领跑太飘忽了!", "路线太诡异了!", "刚才网卡了...", "是在梦游吗？" },
-       Blue = { "刚才节奏乱了...", "被假动作骗了!", "勉强能预判路线!", "差点被甩出节奏!", "这图太滑了!", "刚才手滑了一下!", "还没有进入状态!" },
-       Green = { "勉强跟住了!", "节奏还行!", "下次贴更近!", "普通发挥!", "稍微认真了一点!", "一般般吧!", "还可以更近!" },
-       Gold = { "这就叫贴贴!", "咬得死死的!", "节奏完美!", "别想逃出我的掌心!", "后视镜里全是我!", "这就叫追走!", "不仅快还稳!" },
-       Purple = { "我是你的影子!", "胶水做的车!", "完全同步!", "想甩掉我？没门!", "窒息般的压迫感!", "你的动作我都会!", "请叫我复制忍者!" }
+       Green = { 
+           "勉强跟住了!", "节奏还行!", "下次贴更近!", "普通发挥!", "稍微认真了一点!", "一般般吧!", "还可以更近!",
+           "刚才节奏乱了...", "被假动作骗了!", "勉强能预判路线!", "差点被甩出节奏!", "这图太滑了!", "刚才手滑了一下!", "还没有进入状态!", "忽快忽慢的...", "完全没节奏...", "刚才网卡了..."
+       },
+       Gold = { 
+           "这就叫贴贴!", "咬得死死的!", "节奏完美!", "别想逃出我的掌心!", "后视镜里全是我!", "这就叫追走!", "不仅快还稳!",
+           "这路线谁跟得上？", "这是在画龙吗?", "这领跑太飘忽了!", "路线太诡异了!", "是在梦游吗？"
+       },
+       Purple = { 
+           "我是你的影子!", "胶水做的车!", "完全同步!", "想甩掉我？没门!", "窒息般的压迫感!", "你的动作我都会!", "请叫我复制忍者!" 
+       }
   }
 }
 
@@ -207,20 +213,21 @@ local function Logic_IsChaseValid(chaser, leader, i, j)
       local lSlip = getSlipAngle(leader)
       local angleDiff = math.abs(cSlip - lSlip)
       
-      if angleDiff >= CONFIG.maxAngleDiff then return false, "角度不同步" end
+      -- [REMOVED] 移除硬性角度检查，超过 30度 不再视为断开，而是由 Tier 计算决定得分
+      -- if angleDiff >= CONFIG.maxAngleDiff then return false, "角度不同步" end
       
       return true, "OK", angleDiff
 end
 
 -- Tier 计算辅助函数 (包含角度质量)
 local function Logic_CalculateTier(dist, angleDiff)
-      -- Tier 3 (神级): 极近距离 (< 4m) 且 角度完美 (< 10deg)
-      -- 完美追走: 1秒 5分 (之前是10分)
+      -- Tier 3 (神级): 极近距离 (< 3.5m) 且 角度完美 (< 10deg)
+      -- 完美追走: 1秒 5分
       if dist < CONFIG.distPraise and angleDiff < 10.0 then return 3, 5.0 end 
       
-      -- Tier 2 (优秀): 近距离 (< 10m) 且 角度不错 (< 20deg)
-      -- 普通追走: 1秒 1分
-      if (dist < CONFIG.distNormal and angleDiff < 20.0) or (dist < CONFIG.distPraise) then return 2, 1.0 end 
+      -- Tier 2 (优秀): 近距离 (< 10m)
+      -- 普通追走: 1秒 1分 (只要距离够近，角度差大也算普通追走，不给完美分而已)
+      if dist < CONFIG.distNormal then return 2, 1.0 end 
       
       -- Tier 1 (有效): 只要在范围内算有效
       -- 勉强跟住: 不加分，只算维持连接
@@ -313,6 +320,7 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
   end
   
   -- 判断是否断开
+  -- 判断是否断开
   if stats.graceTimer > CONFIG.comboGrace then
        -- 结算并重置
        if stats.activeTime > 0 then
@@ -322,7 +330,13 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
        end
        stats.isLocked = false
   else
-       stats.isLocked = stats.lockTimer > CONFIG.warmupTime
+       -- [FIXED] 只要有分数积累 (activeTime > 0)，就强制保持锁定，直到 Grace 超时
+       -- 否则，必须满足预热时间才能算锁定
+       if stats.activeTime > 0 then
+           stats.isLocked = true
+       else
+           stats.isLocked = stats.lockTimer > CONFIG.warmupTime
+       end
   end
   
   -- E. 交互 (聊天)
@@ -521,9 +535,9 @@ local function AddDanmaku(text, color)
       width = 12.0,     -- 该深度下的虚拟屏幕宽度 (米)
       height = 6.0,     -- 虚拟屏幕高度 (米)
       speed = 0.25,     -- 米每秒
-      fontSize = 5.0,   
-      maxLines = 5,
-      lineHeight = 1.2
+      fontSize = 3.5,   -- [MODIFIED] 缩小 1/3 (5.0 -> 3.5)
+      maxLines = 3,         -- [MODIFIED] 减少行数，只保留上方 3 行
+      lineHeight = 1.0      -- [MODIFIED] 稍微调小行高
   }
   
   local lineIdx = math.random(0, DANMAKU_CONFIG.maxLines - 1)
@@ -533,9 +547,11 @@ local function AddDanmaku(text, color)
       text = text, 
       color = color or COLORS.White,
       x = (DANMAKU_CONFIG.width / 2) + math.random(0, 2), 
-      y = (DANMAKU_CONFIG.height / 3) - (lineIdx * DANMAKU_CONFIG.lineHeight),
+      -- [MODIFIED] 暴力抬高：起始高度直接设为 4.5m (原先约 2.7m)，强制顶满上边缘
+      y = 4.5 - (lineIdx * DANMAKU_CONFIG.lineHeight),
       speed = speed,
-      life = 60.0
+      life = 60.0,
+      fontSize = DANMAKU_CONFIG.fontSize -- Store for render
   })
 end
 
@@ -563,7 +579,8 @@ local function Render_Danmaku(dt)
       local textPos = screenCenter + (camSide * item.x) + (camUp * item.y)
       
       -- 直接在 3D 中绘制
-      render.debugText(textPos, item.text, item.color, 5.0)
+      -- [MODIFIED] 使用 item 自带字体大小 (3.5)
+      render.debugText(textPos, item.text, item.color, item.fontSize or 3.5)
       
       -- 清理
       if item.x < -(width / 2) - 5 then 
@@ -586,15 +603,36 @@ function script.update(dt)
   
   local player = ac.getCar(sim.focusedCar)
   
-  -- 1. 确认目标 (Select)
-  local targetIdx = Logic_SelectTarget(sim, player)
+  -- 1. 目标选择逻辑 (修改版)
+  -- 默认没有目标
+  local targetIdx = -1
+  
+  -- 检查当前是否有锁定的目标
+  if State.activeTarget and State.activeTarget.index ~= -1 and State.activeTarget.stats.isLocked then
+      -- 如果已锁定，强制保持当前目标，跳过搜索
+      targetIdx = State.activeTarget.index
+  else
+      -- 未锁定，寻找最佳目标
+      targetIdx = Logic_SelectTarget(sim, player)
+  end
+  
   local activeData = nil
   
   -- 2. 判定追走 (Process)
   if targetIdx ~= -1 then
       local leader = ac.getCar(targetIdx)
-      if leader then
+      -- 确保目标仍存在且连接
+      if leader and leader.isConnected then
           activeData = Logic_ProcessChase(sim.focusedCar, targetIdx, player, leader, dt or realDt, realDt, sim)
+      else
+          -- [FIXED] 目标断开 (可能是回P了)，如果之前有分数，必须立刻结算！
+          if State.activeTarget.index == targetIdx and State.activeTarget.stats.activeTime > 0 then
+             local leaderName = (leader and leader.driverName) or "Unknown"
+             Logic_FinishChase(targetIdx .. "_" .. State.activeTarget.index, State.activeTarget.stats, leaderName)
+          end
+          
+          -- 目标断开，强制清除
+          targetIdx = -1 
       end
   end
   
@@ -611,10 +649,7 @@ ac.onChatMessage(function(msg, carIndex)
    if not msg or #msg == 0 or msg:match("^%s*$") then return end
 
    -- 处理系统消息
-   if carIndex == -1 then
-       AddDanmaku("[System]: " .. msg, rgbm(1, 1, 0.5, 1)) -- 淡黄色
-       return
-   end
+   if carIndex == -1 then return end
 
    local car = ac.getCar(carIndex)
    local name = "Car " .. tostring(carIndex)
