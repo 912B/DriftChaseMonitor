@@ -239,10 +239,10 @@ end
 
 -- 结束追走并结算
 local function Logic_FinishChase(key, stats, leaderName)
-    local activeTime = stats.activeTime
-    if activeTime < 2.0 then return end -- 时间太短不结算
+    local score = math.floor(stats.chaseScore)
+    if stats.chaseScore < 2.0 then return end -- 时间太短不结算
     
-    local score = math.floor(activeTime)
+    local score = math.floor(stats.chaseScore)
     
     -- 优化：绿色星星 (25分) 以上才发送消息，避免低分刷屏
     if score < 25 then return end
@@ -289,7 +289,7 @@ end
 local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
   local key = i .. "_" .. j
   local stats = State.chaseStats[key] or { 
-      activeTime=0, realTime=0, graceTimer=0, 
+      chaseScore=0, realTime=0, graceTimer=0, 
       lastTier=0, lockTimer=0, isLocked=false, lastMsgTime=-9999 
   }
   
@@ -311,7 +311,7 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
   -- 3. 状态维护：管理锁定时间与连击容错 (Grace Timer)
   if currentTier > 0 then
       stats.graceTimer = 0 -- 重置衰减
-      stats.activeTime = stats.activeTime + scoreGain
+      stats.chaseScore = stats.chaseScore + scoreGain
       stats.realTime = stats.realTime + realDt
       stats.lockTimer = stats.lockTimer + dt
   else
@@ -323,17 +323,17 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
   -- 判断是否断开
   if stats.graceTimer > CONFIG.comboGrace then
        -- 结算并重置
-       if stats.activeTime > 0 then
+       if stats.chaseScore > 0 then
            local leaderName = ac.getCar(j).driverName
            Logic_FinishChase(key, stats, leaderName)
-           stats.activeTime = 0
+           stats.chaseScore = 0
        end
        stats.isLocked = false
   else
-       -- [FIXED] 只要有分数积累 (activeTime > 0)，就强制保持锁定，直到 Grace 超时
-       -- [MODIFIED] 零分不锁定：如果还没开始得分 (activeTime == 0)，则始终不锁定 (isLocked = false)
+       -- [FIXED] 只要有分数积累 (chaseScore > 0)，就强制保持锁定，直到 Grace 超时
+       -- [MODIFIED] 零分不锁定：如果还没开始得分 (chaseScore == 0)，则始终不锁定 (isLocked = false)
        -- 这允许 Logic_SelectTarget 继续寻找更近/更好的目标，直到我们真正开始拿分为止。
-       if stats.activeTime > 0 then
+       if stats.chaseScore > 0 then
            stats.isLocked = true
        else
            stats.isLocked = false
@@ -403,10 +403,10 @@ end
 -- 5. RENDER MODULES (渲染模块层)
 -- ============================================================================
 
-local function Render_StarRating(car, activeTime)
+local function Render_StarRating(car, chaseScore)
     if not car then return end
     
-    local score = math.floor(activeTime)
+    local score = math.floor(chaseScore)
     local tierIdx = 1 -- 默认白
     local stars = 0
     
@@ -524,7 +524,7 @@ local function Render_Overhead(dt)
   if State.activeTarget and State.activeTarget.index ~= -1 then
       local t = State.activeTarget
       local car = ac.getCar(t.index)
-      Render_StarRating(car, t.stats.activeTime)
+      Render_StarRating(car, t.stats.chaseScore)
   end
   
 
@@ -573,10 +573,13 @@ function script.update(dt)
           local prevTarget = State.activeTarget 
           
           -- 检查是否是我们正在追的目标且有分数
-          if prevTarget and prevTarget.index == targetIdx and prevTarget.stats.activeTime > 0 then
+          if prevTarget and prevTarget.index == targetIdx and prevTarget.stats.chaseScore > 0 then
              local leaderName = (leader and leader.driverName) or "Unknown"
              -- [CORRECTED KEY] 使用 sim.focusedCar (chaser) .. "_" .. targetIdx (leader) 以匹配 Logic_ProcessChase
              Logic_FinishChase(sim.focusedCar .. "_" .. targetIdx, prevTarget.stats, leaderName)
+             -- [FIX] Reset stats immediately to prevent stale state if re-acquired
+             prevTarget.stats.chaseScore = 0
+             prevTarget.stats.isLocked = false
           end
           
           -- 目标断开，强制清除
