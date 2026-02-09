@@ -30,7 +30,7 @@ local CONFIG = {
 local UI_CONFIG = {
   barWidth = 200,
   barHeight = 12,
-  starSize = 25,
+  starSize = 20,
   pos = vec2(100, 100)
 }
 
@@ -442,7 +442,7 @@ local function Render_StarRating(car, chaseScore)
     local fullText = starStr .. " " .. string.format("%d", score)
     
     -- 2.8m 高度 (避开名牌)
-    render.debugText(car.position + vec3(0, 2.8, 0), fullText, conf.color, 3.0)
+    render.debugText(car.position + vec3(0, 2.8, 0), fullText, conf.color, 1.5)
 end
 
 local function Render_Overhead(dt)
@@ -472,7 +472,7 @@ local function Render_Overhead(dt)
               
               -- 1. 字体大小 (快速变大后保持)
               local tSize = math.min(elapsed, FLOAT_TIME) / FLOAT_TIME
-              local currentSize = 2.0 + (tSize * 2.5) -- 2.0 -> 4.5
+              local currentSize = 1.2 + (tSize * 1.5) -- 1.2 -> 2.7 (for 1080p)
               
               -- 2. 位移计算 (往屏幕中心漂)
               -- 如果车在屏幕右侧，文字往左飘；如果在左侧，往右飘。
