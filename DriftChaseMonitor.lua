@@ -141,11 +141,15 @@ end
 
 -- 交互模块
 local function Logic_TriggerChat(chaserIdx, leaderIdx, tier, isChaser)
-    local msgTable = isChaser and MSGS.CHASER_TO_LEADER["TIER" .. tier] or MSGS.LEADER_TO_CHASER["TIER" .. tier]
+    -- 目前仅支持前车嘲讽后车
+    if isChaser then return end
+
+    local msgTable = MSGS.LEADER_TO_CHASER["TIER" .. tier]
     if not msgTable then return end
     
     local text = getRandom(msgTable)
-    local targetIdx = isChaser and chaserIdx or leaderIdx
+    -- 嘲讽文字显示在发出嘲讽的车（前车，即 leader）头顶
+    local targetIdx = leaderIdx
     local color = COLORS.White -- 所有消息使用纯白
 
     
@@ -242,7 +246,7 @@ local function Logic_FinishChase(key, stats, leaderName)
     local score = math.floor(stats.chaseScore)
     if stats.chaseScore < 2.0 then return end -- 时间太短不结算
     
-    local score = math.floor(stats.chaseScore)
+
     
     -- 优化：绿色星星 (25分) 以上才发送消息，避免低分刷屏
     if score < 25 then return end
@@ -281,6 +285,12 @@ local function Logic_FinishChase(key, stats, leaderName)
         suffix = getRandom(MSGS.RESULTS_SUFFIX[colorKey])
     end
     
+
+    -- [FIX] 防止观众端重复发送消息 (仅允许本地车手发送)
+    local sim = ac.getSim()
+    local car = ac.getCar(sim.focusedCar)
+    if not car or not car.isLocal then return end
+
     local msg = string.format("追走结束! 获得: %d分 (%s色 %s) %s", score, colorName, starsStr, suffix)
     ac.sendChatMessage(msg)
 end
@@ -537,6 +547,7 @@ end
 -- ============================================================================
 -- 6. MAIN LOOP (主循环)
 -- ============================================================================
+
 
 function script.update(dt)
   local realDt = ac.getDeltaT()
