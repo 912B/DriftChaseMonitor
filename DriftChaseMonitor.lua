@@ -79,6 +79,9 @@ local MSGS = {
     GOOD = { "我是你的影子!", "胶水做的车!", "窒息般的压迫感!", "完美的同步!" }
   },
   RESULTS_SUFFIX = {
+       Blue = {
+           "还需努力!", "有点意思了!", "再近一点就好了!", "继续保持!", "可以更贴近些!"
+       },
        Green = { 
            "勉强跟住了!", "节奏还行!", "下次贴更近!", "普通发挥!", "稍微认真了一点!", "一般般吧!", "还可以更近!",
            "刚才节奏乱了...", "被假动作骗了!", "勉强能预判路线!", "差点被甩出节奏!", "这图太滑了!", "刚才手滑了一下!", "还没有进入状态!", "忽快忽慢的...", "完全没节奏...", "刚才网卡了..."
@@ -237,7 +240,7 @@ local function Logic_CalculateTier(dist, angleDiff)
       -- 勉强跟住: 不加分，只算维持连接
       if dist < CONFIG.distMock then return 1, 0.0 end
       
-      return 1, 0.0 -- 距离太远，或者是 provike 区域
+      return 0, 0.0 -- 距离太远，或者是 provike 区域
 end
 
 
@@ -246,9 +249,7 @@ local function Logic_FinishChase(key, stats, leaderName)
     local score = math.floor(stats.chaseScore)
     if stats.chaseScore < 2.0 then return end -- 时间太短不结算
     
-
-    
-    -- 优化：绿色星星 (25分) 以上才发送消息，避免低分刷屏
+    -- 优化：绿色星星 (25分) 以上发送消息，避免低分刷屏
     if score < 25 then return end
 
     -- 计算星级颜色 (与 Render_StarRating 逻辑一致)
@@ -339,6 +340,7 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
            stats.chaseScore = 0
        end
        stats.isLocked = false
+       return nil
   else
        -- [FIXED] 只要有分数积累 (chaseScore > 0)，就强制保持锁定，直到 Grace 超时
        -- [MODIFIED] 零分不锁定：如果还没开始得分 (chaseScore == 0)，则始终不锁定 (isLocked = false)
