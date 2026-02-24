@@ -104,7 +104,6 @@ local State = {
   isDrifting = {}, 
   chaseStats = {}, 
   activeTarget = nil, 
-  danmakuQueue = {},
   overheadQueue = {},
 }
 
@@ -340,6 +339,7 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
            stats.chaseScore = 0
        end
        stats.isLocked = false
+       State.chaseStats[key] = nil
        return nil
   else
        -- [FIXED] 只要有分数积累 (chaseScore > 0)，就强制保持锁定，直到 Grace 超时
@@ -589,10 +589,12 @@ function script.update(dt)
           if prevTarget and prevTarget.index == targetIdx and prevTarget.stats.chaseScore > 0 then
              local leaderName = (leader and leader.driverName) or "Unknown"
              -- [CORRECTED KEY] 使用 sim.focusedCar (chaser) .. "_" .. targetIdx (leader) 以匹配 Logic_ProcessChase
-             Logic_FinishChase(sim.focusedCar .. "_" .. targetIdx, prevTarget.stats, leaderName)
+             local key = sim.focusedCar .. "_" .. targetIdx
+             Logic_FinishChase(key, prevTarget.stats, leaderName)
              -- [FIX] Reset stats immediately to prevent stale state if re-acquired
              prevTarget.stats.chaseScore = 0
              prevTarget.stats.isLocked = false
+             State.chaseStats[key] = nil
           end
           
           -- 目标断开，强制清除
