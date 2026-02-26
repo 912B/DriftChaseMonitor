@@ -244,11 +244,9 @@ end
 
 
 -- 结束追走并结算
-local function Logic_FinishChase(key, stats, leaderName)
+local function Logic_FinishChase(key, stats)
+    if not stats or not stats.chaseScore then return end
     local score = math.floor(stats.chaseScore)
-    if stats.chaseScore < 2.0 then return end -- 时间太短不结算
-    
-    -- 优化：绿色星星 (25分) 以上发送消息，避免低分刷屏
     if score < 25 then return end
 
     -- 计算星级颜色 (与 Render_StarRating 逻辑一致)
@@ -259,7 +257,7 @@ local function Logic_FinishChase(key, stats, leaderName)
     if score >= 625 then
         colorName = "紫"
         colorKey = "Purple"
-        starsStr = "★★★★★" -- 简化显示，不像渲染那样精细计算多颗星
+        starsStr = "★★★★★"
     elseif score >= 125 then
         colorName = "金"
         colorKey = "Gold"
@@ -268,30 +266,28 @@ local function Logic_FinishChase(key, stats, leaderName)
         colorName = "绿"
         colorKey = "Green"
         starsStr = "★★★"
-    elseif score >= 5 then
-        colorName = "蓝"
-        colorKey = "Blue"
-        starsStr = "★★"
-    else
-        colorName = "白"
-        colorKey = "White"
-        starsStr = "★"
     end
     
-    -- 仅仅发送聊天消息 (Chat Message)
-    -- 格式: [追走结算] 齐驰上树 (Car 0) -> 52分 (绿星 ★★★) 阴阳怪气后缀
     local suffix = ""
     if MSGS.RESULTS_SUFFIX and MSGS.RESULTS_SUFFIX[colorKey] then
-        suffix = getRandom(MSGS.RESULTS_SUFFIX[colorKey])
+        local pool = MSGS.RESULTS_SUFFIX[colorKey]
+        if type(pool) == "table" and #pool > 0 then
+            suffix = tostring(pool[math.random(#pool)] or "")
+        end
     end
     
-
-    -- [FIX] 防止观众端重复发送消息 (仅允许本地车手发送)
+    -- [FIX] 防止观众端重复发送消息
+    -- 使用老的逻辑：判断焦点车是否为 remote
     local sim = ac.getSim()
-    local car = ac.getCar(sim.focusedCar)
-    if not car or not car.isLocal then return end
+    if not sim then return end
+    
+    local focusCar = ac.getCar(sim.focusedCar)
+    -- 注意：如果该车是远程车 (isRemote)，说明我现在是观众视角或者这是别人，不发送聊天
+    if not focusCar or focusCar.isRemote then return end
 
     local msg = string.format("追走结束! 获得: %d分 (%s色 %s) %s", score, colorName, starsStr, suffix)
+    
+    -- 原生发送接口 (移除 pcall, 让潜在报错暴露)
     ac.sendChatMessage(msg)
 end
 
@@ -330,21 +326,16 @@ local function Logic_ProcessChase(i, j, chaser, leader, dt, realDt, sim)
   end
   
   -- 判断是否断开
-  -- 判断是否断开
   if stats.graceTimer > CONFIG.comboGrace then
        -- 结算并重置
        if stats.chaseScore > 0 then
-           local leaderName = ac.getCar(j).driverName
-           Logic_FinishChase(key, stats, leaderName)
+           Logic_FinishChase(key, stats)
            stats.chaseScore = 0
        end
        stats.isLocked = false
-       State.chaseStats[key] = nil
+       -- Return explicitly nil to tell caller this chase combo is officially DEAD
        return nil
   else
-       -- [FIXED] 只要有分数积累 (chaseScore > 0)，就强制保持锁定，直到 Grace 超时
-       -- [MODIFIED] 零分不锁定：如果还没开始得分 (chaseScore == 0)，则始终不锁定 (isLocked = false)
-       -- 这允许 Logic_SelectTarget 继续寻找更近/更好的目标，直到我们真正开始拿分为止。
        if stats.chaseScore > 0 then
            stats.isLocked = true
        else
@@ -417,6 +408,7 @@ end
 
 local function Render_StarRating(car, chaseScore)
     if not car then return end
+    if not chaseScore or chaseScore < 1.0 then return end
     
     local score = math.floor(chaseScore)
     local tierIdx = 1 -- 默认白
@@ -580,26 +572,26 @@ function script.update(dt)
       -- 确保目标仍存在且连接
       if leader and leader.isConnected then
           activeData = Logic_ProcessChase(sim.focusedCar, targetIdx, player, leader, dt or realDt, realDt, sim)
-      else
-          -- [OPTIMIZED] 目标断开结算逻辑
-          -- 缓存上一帧的目标状态
-          local prevTarget = State.activeTarget 
-          
-          -- 检查是否是我们正在追的目标且有分数
-          if prevTarget and prevTarget.index == targetIdx and prevTarget.stats.chaseScore > 0 then
-             local leaderName = (leader and leader.driverName) or "Unknown"
-             -- [CORRECTED KEY] 使用 sim.focusedCar (chaser) .. "_" .. targetIdx (leader) 以匹配 Logic_ProcessChase
-             local key = sim.focusedCar .. "_" .. targetIdx
-             Logic_FinishChase(key, prevTarget.stats, leaderName)
-             -- [FIX] Reset stats immediately to prevent stale state if re-acquired
-             prevTarget.stats.chaseScore = 0
-             prevTarget.stats.isLocked = false
-             State.chaseStats[key] = nil
-          end
-          
-          -- 目标断开，强制清除
-          targetIdx = -1 
       end
+  end
+  
+  -- [CRITICAL FIX] 目标断开或 Process 返回 nil (Grace 超时) 结算逻辑
+  -- 缓存上一帧的目标状态
+  local prevTarget = State.activeTarget 
+  
+  if not activeData then
+      -- 检查上一帧是否有正在追的目标且有分数
+      if prevTarget and prevTarget.index ~= -1 and prevTarget.stats and prevTarget.stats.chaseScore > 0 then
+         local key = sim.focusedCar .. "_" .. prevTarget.index
+         -- 强制结算
+         Logic_FinishChase(key, prevTarget.stats)
+         
+         -- 彻底清空字典中的暂存状态
+         State.chaseStats[key] = nil
+      end
+      
+      -- 如果本帧没有 activeData，释放目标锁定
+      targetIdx = -1 
   end
   
   State.activeTarget = activeData or { index = -1, dist=0, stats={} }
